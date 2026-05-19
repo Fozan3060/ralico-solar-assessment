@@ -104,3 +104,15 @@ A running list of mistakes caught and fixed during the build (feeds the README's
   a muted italic "Pending" placeholder.
 - Field metadata (icon, label, value-formatter) lives in `lib/fields.ts`, shared with
   the page so display order and labels stay consistent.
+
+### feature/complete-state
+
+- New `JsonOutput` component reveals below the field cards once `isComplete` flips true.
+  - Amber "JSON" badge label.
+  - `<pre>` block in JetBrains Mono on a dark terminal background.
+  - Custom regex-based syntax highlighter: keys → sky, strings → emerald, numbers →
+    orange, booleans → amber, null → muted slate. HTML-escaped first, so the output is
+    safe to render via `dangerouslySetInnerHTML`.
+  - Fades in + slides up on reveal (`animate-fade-in-up` keyframe).
+- The composer lock (the "Assessment complete" bar) was already wired up in
+  `feature/chat-ui` and continues to drive from the same `isComplete` flag.
