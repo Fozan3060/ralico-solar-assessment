@@ -168,7 +168,7 @@ export default function Home() {
 
   return (
     <div className="flex h-dvh flex-col md:flex-row">
-      <DataPanel collected={collected} />
+      <DataPanel collected={collected} isComplete={isComplete} />
 
       <div className="flex min-h-0 flex-1 flex-col bg-white md:order-1">
         <ChatHeader
