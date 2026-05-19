@@ -22,6 +22,7 @@
 | AI SDK version | **v4** | The brief describes v4 APIs (`createDataStreamResponse`, `DataStreamWriter`, `data.append`). v5 renamed them all — v4 matches the spec exactly and lowers risk. |
 | Next.js version | **15** (pinned) | `create-next-app@latest` resolved to v16; the brief requires Next 15, so `create-next-app@15` was pinned. |
 | shadcn base | **Radix UI** + Nova preset | The classic, best-documented shadcn setup; Radix has full React 19 support. |
+| Voice approach | **Browser Web Speech API** | Avatar APIs (HeyGen) and premium voice APIs all have small free tiers / per-minute cost; the browser's built-in `SpeechRecognition` + `speechSynthesis` are free, unlimited, no keys, no session caps — the only choice that's safe for a publicly deployed demo recruiters will test. |
 
 ## Course corrections — what the AI got wrong
 
@@ -30,9 +31,12 @@ A running list of mistakes caught and fixed during the build (feeds the README's
 
 1. **Next.js version drift.** `create-next-app@latest` scaffolded **Next.js 16**, but the
    brief requires Next.js 15. Fix: pinned `create-next-app@15` and re-scaffolded.
-2. **Conversation assumed text-only.** The initial plan treated the "conversation" as the
-   user *typing* while the AI *speaks back* — not truly conversational. Fix: added
-   browser Web Speech API voice input so the user can also speak to the assistant.
+2. **Conversation was text-only — not truly conversational.** The original brief specified
+   `SpeechRecognition` (user speech → text) but no `SpeechSynthesis`, leaving the AI silent.
+   After the verbal interview made clear the recruiters wanted a *talking* AI, the app was
+   rebuilt **voice-first**: the user speaks **and** the AI speaks back, in a hands-free
+   turn-based call loop. The existing API route was modality-neutral, so the backend
+   needed no changes.
 
 ---
 
@@ -68,3 +72,23 @@ A running list of mistakes caught and fixed during the build (feeds the README's
   are appended to the stream as a `{ type: "collected" }` data part.
 - Prompts isolated in `lib/prompts.ts`; collected-data helpers in `lib/collected.ts`.
 - Extraction is best-effort: if it throws, the previously collected state is preserved.
+
+### feature/chat-ui
+
+- Built the voice-first conversation experience in `app/page.tsx` with the AI SDK `useChat` hook.
+- **Voice both ways:** `use-speech-recognition` (browser STT — user speaks) and
+  `use-speech-synthesis` (browser TTS — the assistant speaks). Both are browser-native —
+  no API keys, no per-use cost, no session caps. `types/speech.d.ts` adds the
+  declarations TypeScript is missing for `SpeechRecognition`.
+- **Hands-free call loop:** when the assistant finishes a reply it is spoken aloud, and
+  the moment speech ends the microphone re-opens to listen — turn-based, repeating until
+  all five fields are collected.
+- Animated `VoiceOrb` presence (idle / thinking / speaking / listening), message
+  transcript with avatars and a bouncing typing indicator, progress bar, and a mute
+  toggle in the header.
+- Text remains a first-class fallback — typing always works, and the mic is hidden where
+  the browser lacks `SpeechRecognition` (e.g. Firefox).
+- Custom `{ type: "collected" }` data parts from the stream update the panel + completion
+  state; each request re-sends `currentCollected` so the server-side safety merge holds.
+- A hidden trigger message opens the assessment; the assistant's greeting is the first
+  message that's actually rendered.
