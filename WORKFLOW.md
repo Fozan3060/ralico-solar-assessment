@@ -49,3 +49,22 @@ A running list of mistakes caught and fixed during the build (feeds the README's
 - Loaded Google Fonts via `next/font`: **Outfit** (body) and **JetBrains Mono** (code/JSON).
 - Added `.env.example` (committed) and `.env.local` (gitignored) for the `GROQ_API_KEY`.
 - Disabled the Claude co-author commit trailer via `.claude/settings.json`.
+
+> **On generated code:** the files in `components/ui/` are shadcn/ui primitives,
+> generated verbatim by the shadcn CLI — the "copy it in and own it" model is exactly
+> how shadcn is designed to work. Everything else — the API route, the chat interface,
+> the data panel, the speech hook, the prompts and the helpers — is hand-written.
+
+### feature/api-route
+
+- Built `POST /api/chat` — the single backend endpoint. Each request runs two phases:
+  - **Phase 1 (converse):** `streamText` with Groq `llama-3.3-70b-versatile` and the
+    fixed system prompt, streamed to the client via `createDataStreamResponse`.
+  - **Phase 2 (extract):** inside `streamText`'s `onFinish`, `generateObject` re-reads
+    the whole transcript against a Zod schema and reports all five fields' values.
+- **Safety merge** (`lib/collected.ts`): a field already non-null in the client's
+  `currentCollected` is never overwritten — so a confirmed field cannot regress to
+  null even if an extraction pass misses it. The merged result plus a `complete` flag
+  are appended to the stream as a `{ type: "collected" }` data part.
+- Prompts isolated in `lib/prompts.ts`; collected-data helpers in `lib/collected.ts`.
+- Extraction is best-effort: if it throws, the previously collected state is preserved.
