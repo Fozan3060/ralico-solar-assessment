@@ -92,3 +92,15 @@ A running list of mistakes caught and fixed during the build (feeds the README's
   state; each request re-sends `currentCollected` so the server-side safety merge holds.
 - A hidden trigger message opens the assessment; the assistant's greeting is the first
   message that's actually rendered.
+
+### feature/data-panel
+
+- Polished the right sidebar into proper cards: a dedicated `FieldCard` per field with
+  icon, label, value, and an amber-check pill when filled.
+- **Scale-on-fill animation** — each card tracks its previous filled state with a `useRef`
+  and fires a subtle `fill-pop` keyframe (`scale(1 → 1.04 → 1)`) the moment its value
+  transitions from `null` → confirmed. The initial mount intentionally doesn't animate.
+- Filled cards gain a faint amber border + warmer slate background; unfilled cards keep
+  a muted italic "Pending" placeholder.
+- Field metadata (icon, label, value-formatter) lives in `lib/fields.ts`, shared with
+  the page so display order and labels stay consistent.

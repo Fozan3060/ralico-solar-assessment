@@ -159,3 +159,19 @@
 .animate-fade-in-up {
   animation: fade-in-up 0.32s ease-out both;
 }
+
+@keyframes fill-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-fill-pop {
+  animation: fill-pop 0.55s ease-out;
+}
