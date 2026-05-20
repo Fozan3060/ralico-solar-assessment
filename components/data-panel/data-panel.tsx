@@ -24,7 +24,7 @@ export function DataPanel({
   return (
     <aside className="max-h-[40vh] w-full shrink-0 overflow-y-auto bg-slate-950 p-5 text-slate-100 md:order-2 md:max-h-none md:w-80">
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
-        Assessment
+        Your home
       </h2>
 
       <div className="space-y-2.5">

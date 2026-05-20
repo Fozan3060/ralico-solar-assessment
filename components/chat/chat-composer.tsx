@@ -36,7 +36,7 @@ export function ChatComposer({
     return (
       <div className="flex items-center justify-center gap-2 border-t border-slate-200 bg-emerald-50 px-4 py-4 font-medium text-emerald-700">
         <CheckCircle2 className="h-5 w-5" />
-        Assessment complete
+        All set — we have everything we need
       </div>
     );
   }

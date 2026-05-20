@@ -27,11 +27,11 @@ export function StartScreen({ onStart, micSupported }: StartScreenProps) {
       </div>
 
       <h1 className="max-w-md text-3xl font-semibold tracking-tight text-slate-900">
-        Solar Property Assessment
+        Is solar right for your home?
       </h1>
       <p className="max-w-md text-slate-600">
-        Have a quick spoken conversation with our assistant — five short
-        questions to see whether your home is a good fit for solar.
+        Have a quick voice chat with our advisor — five short questions to see
+        whether solar would be a good fit for your home.
       </p>
 
       <div className="flex flex-col items-center gap-3">
@@ -41,7 +41,7 @@ export function StartScreen({ onStart, micSupported }: StartScreenProps) {
           className="gap-2 bg-amber-500 text-base hover:bg-amber-600"
         >
           <Mic className="h-5 w-5" />
-          Start voice assessment
+          Start voice chat
         </Button>
         <button
           type="button"
