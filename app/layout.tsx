@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Only mono is loaded as a web font. The body uses the OS system font stack
+// (SF Pro on macOS, Segoe UI on Windows, Roboto on Android) for a premium,
+// native feel — defined in globals.css via --font-sans.
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
   display: "swap",
 });
@@ -17,7 +14,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Ralico — Solar Property Assessment",
   description:
-    "Chat with Ralico's assistant for a quick solar suitability assessment of your UK property.",
+    "A voice conversation that finds out if solar fits your home — five questions, two minutes.",
 };
 
 export default function RootLayout({
@@ -28,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-[#05070d] text-slate-100 antialiased`}
+        className={`${jetbrainsMono.variable} bg-[#05070d] text-white antialiased`}
       >
         {children}
       </body>

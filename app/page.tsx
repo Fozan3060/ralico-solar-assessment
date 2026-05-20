@@ -7,12 +7,14 @@ import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { LiveCaption } from "@/components/chat/live-caption";
 import { MeshBackground } from "@/components/chat/mesh-background";
+import { ProgressDots } from "@/components/chat/progress-dots";
 import { StartScreen } from "@/components/chat/start-screen";
 import { VoiceOrb, type OrbState } from "@/components/chat/voice-orb";
+import { Waveform } from "@/components/chat/waveform";
 import { DataPanel } from "@/components/data-panel/data-panel";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useSpeechSynthesis } from "@/hooks/use-speech-synthesis";
-import { countFilledFields, EMPTY_COLLECTED } from "@/lib/collected";
+import { countFilledFields, EMPTY_COLLECTED, FIELD_KEYS } from "@/lib/collected";
 import { INITIAL_TRIGGER_MESSAGE } from "@/lib/constants";
 import type { CollectedData } from "@/lib/types";
 
@@ -21,17 +23,21 @@ export default function Home() {
   const [muted, setMuted] = useState(false);
   const [collected, setCollected] = useState<CollectedData>(EMPTY_COLLECTED);
   const [isComplete, setIsComplete] = useState(false);
-  // True once the user has explicitly said they don't know their annual bill,
-  // even after the assistant offered a typical UK estimate.
   const [billUnknown, setBillUnknown] = useState(false);
+  // Karaoke caption — tracks how far the TTS engine has spoken so the
+  // <LiveCaption> can light up words in sync with the spoken word.
+  const [spokenChars, setSpokenChars] = useState(0);
+  const [karaokeActive, setKaraokeActive] = useState(false);
 
-  // Refs mirror state so async speech callbacks always read fresh values.
   const collectedRef = useRef(collected);
   collectedRef.current = collected;
   const isCompleteRef = useRef(isComplete);
   isCompleteRef.current = isComplete;
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+  // Refs for the recognition error handler to read fresh state.
+  const isLoadingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
 
   const { messages, input, handleInputChange, setInput, append, isLoading, data } =
     useChat({ api: "/api/chat" });
@@ -45,8 +51,6 @@ export default function Home() {
   const speakRef = useRef(speak);
   speakRef.current = speak;
 
-  // Send a user message with the latest collected state attached, so the
-  // server-side safety merge always has the current floor to protect.
   const sendMessage = useCallback(
     (text: string) => {
       const trimmed = text.trim();
@@ -59,18 +63,48 @@ export default function Home() {
     [append],
   );
 
+  const handleRecognitionError = useCallback((errorType: string) => {
+    // Only auto-restart on `no-speech` (real silence OR Chrome's silent-end
+    // quirk coerced into `no-speech` by the hook). Real errors — permission
+    // denied, no mic, network — should NOT loop.
+    if (errorType !== "no-speech") return;
+    if (
+      mutedRef.current ||
+      isCompleteRef.current ||
+      isLoadingRef.current ||
+      isSpeakingRef.current
+    ) {
+      return;
+    }
+    // Reopen the mic. Repeats as long as the user stays silent and we're
+    // genuinely awaiting their reply — never "halts" on silence alone.
+    setTimeout(() => {
+      if (
+        mutedRef.current ||
+        isCompleteRef.current ||
+        isLoadingRef.current ||
+        isSpeakingRef.current
+      ) {
+        return;
+      }
+      if (micSupportedRef.current) startListeningRef.current();
+    }, 300);
+  }, []);
+
   const {
     start: startListening,
     stop: stopListening,
     isListening,
     isSupported: micSupported,
-  } = useSpeechRecognition({ onResult: sendMessage });
+  } = useSpeechRecognition({
+    onResult: sendMessage,
+    onError: handleRecognitionError,
+  });
   const startListeningRef = useRef(startListening);
   startListeningRef.current = startListening;
   const micSupportedRef = useRef(micSupported);
   micSupportedRef.current = micSupported;
 
-  // Parse the custom `collected` data parts streamed from the API route.
   useEffect(() => {
     if (!data || data.length === 0) return;
     for (let i = data.length - 1; i >= 0; i--) {
@@ -94,8 +128,10 @@ export default function Home() {
     }
   }, [data]);
 
-  // The call loop: when the assistant finishes a reply, speak it aloud — then,
-  // unless the assessment is done, reopen the mic to listen for the next answer.
+  // Keep refs in sync for the recognition error handler.
+  isLoadingRef.current = isLoading;
+  isSpeakingRef.current = isSpeaking;
+
   const wasLoading = useRef(false);
   useEffect(() => {
     const justFinished = wasLoading.current && !isLoading;
@@ -104,12 +140,20 @@ export default function Home() {
 
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant" || !last.content) return;
-    if (mutedRef.current) return; // text-only mode — no voice
+    if (mutedRef.current) return;
 
-    speakRef.current(last.content, () => {
-      if (isCompleteRef.current) return; // assessment finished — end the loop
-      if (mutedRef.current) return; // user muted mid-speech — don't reopen the mic
-      if (micSupportedRef.current) startListeningRef.current();
+    // Light up the caption in sync with the spoken words.
+    setSpokenChars(0);
+    setKaraokeActive(true);
+
+    speakRef.current(last.content, {
+      onBoundary: (charIndex) => setSpokenChars(charIndex),
+      onEnd: () => {
+        setKaraokeActive(false);
+        if (isCompleteRef.current) return;
+        if (mutedRef.current) return;
+        if (micSupportedRef.current) startListeningRef.current();
+      },
     });
   }, [isLoading, messages]);
 
@@ -161,20 +205,30 @@ export default function Home() {
     );
   }
 
-  // The hidden trigger message is messages[0]; everything after it is visible
-  // in the transcript. The live caption shows the assistant's latest reply.
   const visibleMessages = messages.slice(1);
   const lastAssistant = [...visibleMessages]
     .reverse()
     .find((m) => m.role === "assistant");
   const captionText = lastAssistant?.content ?? "";
-  const showTyping =
-    isLoading && messages[messages.length - 1]?.role === "user";
+  // Show the typing indicator throughout the whole streaming response — the
+  // caption renders only when streaming is done. That way the text doesn't
+  // jitter as tokens arrive one by one.
+  const showTyping = isLoading;
 
   let orbState: OrbState = "idle";
   if (isLoading) orbState = "thinking";
   else if (isSpeaking) orbState = "speaking";
   else if (isListening) orbState = "listening";
+
+  const waveformState =
+    orbState === "listening"
+      ? "listening"
+      : orbState === "speaking"
+        ? "speaking"
+        : "idle";
+
+  const filledCount = countFilledFields(collected) +
+    (billUnknown && collected.annual_electricity_bill_gbp === null ? 1 : 0);
 
   return (
     <>
@@ -184,35 +238,58 @@ export default function Home() {
           collected={collected}
           isComplete={isComplete}
           billUnknown={billUnknown}
+          activityState={orbState}
         />
 
         <div className="flex min-h-0 flex-1 flex-col md:order-1">
           <ChatHeader
-            filledCount={countFilledFields(collected)}
             muted={muted}
             onToggleMute={toggleMute}
             voiceSupported={voiceSupported}
           />
 
-          <main className="flex min-h-0 flex-1 items-center justify-center px-6 py-6">
-            <div className="flex w-full max-w-2xl flex-col items-center gap-8">
-              <VoiceOrb state={orbState} />
-              {showTyping ? (
-                <div
-                  className="flex items-center gap-1.5 py-2"
-                  aria-label="Thinking"
-                >
-                  {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      className="h-2 w-2 animate-bounce rounded-full bg-amber-400/70"
-                      style={{ animationDelay: `${i * 0.18}s` }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <LiveCaption text={captionText} />
-              )}
+          {!isComplete && (
+            <div className="px-6 pt-1 pb-2">
+              <ProgressDots current={filledCount} total={FIELD_KEYS.length} />
+            </div>
+          )}
+
+          <main className="relative flex min-h-0 flex-1 items-center justify-center px-6 py-4">
+            <div className="relative flex w-full max-w-2xl flex-col items-center gap-6">
+              <VoiceOrb state={orbState} size={280} />
+
+              {/* Audio waveform — sits between the orb and the caption. */}
+              <Waveform
+                state={waveformState}
+                bars={56}
+                className="w-[440px] max-w-[88vw]"
+              />
+
+              {/* Fixed-height slot so swapping dots <-> caption never shifts
+                  the orb. Caption is top-aligned within the slot so its
+                  height growth (longer messages) only extends downward. */}
+              <div className="flex min-h-[120px] w-full items-start justify-center">
+                {showTyping ? (
+                  <div
+                    className="flex items-center gap-1.5 pt-6"
+                    aria-label="Thinking"
+                  >
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="h-2 w-2 animate-bounce rounded-full bg-amber-400/70"
+                        style={{ animationDelay: `${i * 0.18}s` }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <LiveCaption
+                    text={captionText}
+                    charsSpoken={spokenChars}
+                    karaokeActive={karaokeActive}
+                  />
+                )}
+              </div>
             </div>
           </main>
 
@@ -225,6 +302,7 @@ export default function Home() {
             micSupported={micSupported}
             isLoading={isLoading}
             isComplete={isComplete}
+            awaitingUser={orbState === "idle" && !isComplete && messages.length > 1}
           />
         </div>
       </div>

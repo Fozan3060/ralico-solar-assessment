@@ -2,97 +2,118 @@ import { cn } from "@/lib/utils";
 
 export type OrbState = "idle" | "thinking" | "speaking" | "listening";
 
-const STATE_LABEL: Record<OrbState, string> = {
-  idle: "Ready",
-  thinking: "Thinking…",
-  speaking: "Speaking",
-  listening: "Listening…",
-};
-
-const STATE_DOT: Record<OrbState, string> = {
-  idle: "bg-slate-500",
-  thinking: "bg-amber-400 animate-pulse",
-  speaking: "bg-amber-400 animate-pulse",
-  listening: "bg-cyan-400 animate-pulse",
+type VoiceOrbProps = {
+  state: OrbState;
+  /** Orb diameter in px. Default 280. */
+  size?: number;
 };
 
 /**
- * The hero of the page — a layered, breathing sun-orb that visibly shifts
- * between idle / thinking / speaking / listening. Designed to feel alive on
- * a dark backdrop without being distracting.
+ * The hero of the page — a layered, breathing sun-orb. Three concentric
+ * rings, a soft halo, a gradient core with shimmer + inset shadow, and an
+ * orbital ring on the complete-style state. Colours shift per state:
+ * amber for idle/speaking, cyan for listening.
  */
-export function VoiceOrb({ state }: { state: OrbState }) {
+export function VoiceOrb({ state, size = 280 }: VoiceOrbProps) {
   const isListening = state === "listening";
   const isSpeaking = state === "speaking";
   const isThinking = state === "thinking";
   const isActive = isListening || isSpeaking;
 
+  const ringColor = isListening
+    ? "border-cyan-500/40"
+    : "border-amber-400/40";
+  const haloColor = isListening
+    ? "bg-[radial-gradient(circle,rgba(0,217,255,0.45)_0%,transparent_70%)]"
+    : "bg-[radial-gradient(circle,rgba(255,140,66,0.55)_0%,transparent_70%)]";
+  const coreGradient = isListening
+    ? "from-cyan-400 via-cyan-500 to-cyan-600"
+    : "from-amber-300 via-amber-500 to-orange-600";
+  const coreGlow = isListening
+    ? "shadow-[0_0_60px_rgba(0,217,255,0.45),inset_0_-20px_40px_rgba(0,0,0,0.3)]"
+    : "shadow-[0_0_70px_rgba(255,140,66,0.55),inset_0_-20px_40px_rgba(0,0,0,0.3)]";
+
+  const coreSize = size * 0.5;
+  const haloSize = coreSize * 1.6;
+
   return (
-    <div className="flex flex-col items-center gap-5">
-      <div className="relative flex h-64 w-64 items-center justify-center">
-        {/* Ambient halo — always-on outer glow */}
-        <div
-          className={cn(
-            "absolute h-full w-full rounded-full blur-3xl transition-colors duration-700",
-            isListening
-              ? "bg-cyan-500/35"
-              : "bg-amber-500/35 animate-glow-pulse",
-          )}
-        />
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      {/* Outer rings — 3 nested, each starting at a *different* point in
+          its cycle (via negative delays) so first paint shows a stable,
+          mid-animation state rather than three rings synchronised at 0%. */}
+      {[0, 1, 2].map((i) => {
+        const ringSize = size * (0.5 + i * 0.15);
+        const duration = 3 + i * 0.5;
+        return (
+          <span
+            key={i}
+            className={cn(
+              "absolute rounded-full border-2 animate-orb-ring",
+              ringColor,
+            )}
+            style={{
+              width: ringSize,
+              height: ringSize,
+              animationDelay: `-${duration / 2 + i * 0.4}s`,
+              animationDuration: `${duration}s`,
+            }}
+          />
+        );
+      })}
 
-        {/* Ripple rings (only when actively listening or speaking) */}
-        {isActive && (
-          <>
-            <span
-              className={cn(
-                "absolute inline-block h-full w-full rounded-full border animate-ripple",
-                isListening
-                  ? "border-cyan-400/50"
-                  : "border-amber-400/50",
-              )}
-              style={{ animationDelay: "0s" }}
-            />
-            <span
-              className={cn(
-                "absolute inline-block h-full w-full rounded-full border animate-ripple",
-                isListening
-                  ? "border-cyan-400/40"
-                  : "border-amber-400/40",
-              )}
-              style={{ animationDelay: "0.8s" }}
-            />
-          </>
+      {/* Soft halo — radial gradient glow */}
+      <span
+        className={cn(
+          "absolute rounded-full animate-orb-halo",
+          haloColor,
         )}
+        style={{ width: haloSize, height: haloSize }}
+      />
 
-        {/* Slowly rotating conic ring — subtle "alive" cue */}
-        <div className="absolute h-[78%] w-[78%] animate-orb-rotate rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(251,191,36,0.35),transparent_60%)] opacity-70" />
+      {/* Core orb — gradient sun, breathing, with inset shadow */}
+      <div
+        className={cn(
+          "relative rounded-full bg-gradient-to-br transition-all",
+          coreGradient,
+          coreGlow,
+          isSpeaking && "animate-breathe",
+          isThinking && "animate-pulse",
+        )}
+        style={{ width: coreSize, height: coreSize }}
+      >
+        {/* Inner shimmer — top-left highlight */}
+        <span className="absolute inset-0 rounded-full bg-gradient-to-tr from-white/30 via-white/5 to-transparent animate-orb-shimmer" />
+        {/* Specular bloom */}
+        <span className="absolute inset-[10%] rounded-full bg-[radial-gradient(circle_at_28%_28%,rgba(255,255,255,0.7),transparent_55%)]" />
+      </div>
 
-        {/* The sun core — a layered amber gradient orb */}
-        <div
-          className={cn(
-            "relative flex h-44 w-44 items-center justify-center rounded-full shadow-[0_0_60px_-5px_rgba(245,158,11,0.7)] transition-transform",
-            isSpeaking && "animate-breathe",
-            isThinking && "animate-pulse",
-          )}
+      {/* Orbital ring (subtle), only when active */}
+      {isActive && (
+        <span
+          className="absolute rounded-full border animate-orb-rotate"
+          style={{
+            width: coreSize * 1.8,
+            height: coreSize * 1.8,
+            borderColor: isListening
+              ? "rgba(0,217,255,0.3)"
+              : "rgba(255,140,66,0.3)",
+            borderStyle: "dashed",
+          }}
         >
-          {/* Outer gradient ring */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-amber-300 via-orange-500 to-rose-600" />
-          {/* Inner darker gradient for depth */}
-          <div className="absolute inset-1 rounded-full bg-gradient-to-br from-amber-200/80 via-orange-500 to-amber-700" />
-          {/* Specular highlight */}
-          <div className="absolute inset-3 rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.65),transparent_55%)]" />
-          {/* Inner shadow */}
-          <div className="absolute inset-0 rounded-full shadow-[inset_0_-10px_30px_rgba(0,0,0,0.25)]" />
-        </div>
-      </div>
-
-      {/* State pill */}
-      <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 backdrop-blur-md">
-        <span className={cn("h-1.5 w-1.5 rounded-full", STATE_DOT[state])} />
-        <span className="text-xs font-medium tracking-wide text-slate-300">
-          {STATE_LABEL[state]}
+          <span
+            className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full"
+            style={{
+              background: isListening ? "#00d9ff" : "#ffad5c",
+              boxShadow: isListening
+                ? "0 0 12px rgba(0,217,255,0.8)"
+                : "0 0 12px rgba(255,173,92,0.8)",
+            }}
+          />
         </span>
-      </div>
+      )}
     </div>
   );
 }

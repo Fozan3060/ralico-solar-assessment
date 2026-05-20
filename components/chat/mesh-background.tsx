@@ -1,6 +1,7 @@
 /**
- * Quiet, "alive" backdrop for the call view — three large blurred gradient
- * blobs that drift behind the UI on slow, offset cycles.
+ * Quiet, "alive" backdrop — three large radial gradient blobs (amber, cyan,
+ * violet) sitting behind a fine dot grid for depth. Pure CSS, no animation
+ * loops needed: the layered glows + dot grid give plenty of visual life.
  */
 export function MeshBackground() {
   return (
@@ -8,16 +9,18 @@ export function MeshBackground() {
       aria-hidden
       className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#05070d]"
     >
-      <div className="absolute -left-40 top-[12%] h-[44rem] w-[44rem] animate-mesh-a rounded-full bg-amber-500/25 blur-[140px]" />
-      <div className="absolute -right-40 bottom-[10%] h-[42rem] w-[42rem] animate-mesh-b rounded-full bg-sky-500/20 blur-[140px]" />
+      {/* Three radial gradient blobs at fixed positions */}
       <div
-        className="absolute left-1/3 top-[55%] h-[32rem] w-[32rem] animate-mesh-c rounded-full bg-fuchsia-500/15 blur-[120px]"
-        style={{ animationDelay: "-6s" }}
+        className="absolute inset-0 opacity-50"
+        style={{
+          background:
+            "radial-gradient(circle at 20% 30%, rgba(255, 140, 66, 0.18), transparent 50%), radial-gradient(circle at 80% 70%, rgba(0, 217, 255, 0.12), transparent 50%), radial-gradient(circle at 50% 50%, rgba(167, 139, 250, 0.1), transparent 60%)",
+        }}
       />
-      {/* Vignette / contrast layer so foreground text stays legible */}
-      <div className="absolute inset-0 bg-slate-950/55" />
-      {/* Subtle grain / noise feel via a faint gradient grid */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_50%,rgba(0,0,0,0.55)_100%)]" />
+      {/* Dot grid overlay for depth */}
+      <div className="absolute inset-0 dot-grid opacity-60" />
+      {/* Vignette so the foreground never washes out */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_45%,rgba(0,0,0,0.6)_100%)]" />
     </div>
   );
 }

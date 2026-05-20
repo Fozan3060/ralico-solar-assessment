@@ -7,16 +7,11 @@ import type { CollectedData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Syntax-highlights the JSON-stringified `CollectedData`. Returns an HTML
- * string of tokens wrapped in coloured spans:
- *  - keys      → sky blue
- *  - strings   → emerald
- *  - numbers   → orange
- *  - booleans  → amber
- *  - null      → muted slate
- *
- * The input is HTML-escaped before any wrapping, so the output is safe to
- * pass through `dangerouslySetInnerHTML`.
+ * Syntax-highlights the JSON-stringified CollectedData:
+ *   - keys     → cyan
+ *   - strings  → amber
+ *   - numbers  → violet
+ *   - null     → muted slate
  */
 function highlightJson(data: CollectedData): string {
   const json = JSON.stringify(data, null, 2);
@@ -28,19 +23,19 @@ function highlightJson(data: CollectedData): string {
   return escaped.replace(
     /("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|\b(true|false)\b|\b(null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
     (match, key, str, bool, nullLit, num) => {
-      if (key) return `<span class="text-sky-300">${key}</span>:`;
-      if (str) return `<span class="text-emerald-300">${str}</span>`;
-      if (bool) return `<span class="text-amber-300">${bool}</span>`;
-      if (nullLit) return `<span class="text-slate-500">${nullLit}</span>`;
-      if (num) return `<span class="text-orange-300">${num}</span>`;
+      if (key) return `<span class="text-cyan-400">${key}</span>:`;
+      if (str) return `<span class="text-amber-300">${str}</span>`;
+      if (bool) return `<span class="text-violet-400">${bool}</span>`;
+      if (nullLit) return `<span class="text-white/40">${nullLit}</span>`;
+      if (num) return `<span class="text-violet-400">${num}</span>`;
       return match;
     },
   );
 }
 
 /**
- * The "snapshot" reveal — shown in the sidebar once the conversation is
- * complete. Faded-in pretty-printed JSON with a copy-to-clipboard pill.
+ * The completion "snapshot" — a glassy card with an amber→violet gradient
+ * border, a Copy button, and line-numbered syntax-highlighted JSON.
  */
 export function JsonOutput({ collected }: { collected: CollectedData }) {
   const [copied, setCopied] = useState(false);
@@ -55,12 +50,15 @@ export function JsonOutput({ collected }: { collected: CollectedData }) {
     }
   };
 
+  const highlighted = highlightJson(collected);
+  const lineCount = JSON.stringify(collected, null, 2).split("\n").length;
+
   return (
-    <div className="mt-6 animate-fade-in-up">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/[0.12] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-          Snapshot
+    <div className="glass-strong relative mt-6 animate-fade-in-up rounded-2xl p-4">
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">
+          Your assessment (JSON)
         </span>
         <button
           type="button"
@@ -69,20 +67,38 @@ export function JsonOutput({ collected }: { collected: CollectedData }) {
             "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
             copied
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
+              : "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white",
           )}
           aria-label={copied ? "Copied" : "Copy JSON"}
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? "Copied" : "Copy JSON"}
         </button>
       </div>
-      <pre
-        className="overflow-x-auto rounded-xl border border-white/[0.06] bg-slate-950/80 p-4 font-mono text-xs leading-relaxed text-slate-300 shadow-[inset_0_0_30px_rgba(245,158,11,0.05)]"
-        // Safe: the input is HTML-escaped above and spans are produced from
-        // JSON.stringify output only — no user-controlled markup reaches the DOM.
-        dangerouslySetInnerHTML={{ __html: highlightJson(collected) }}
-      />
+
+      {/* Code block with line numbers */}
+      <div className="overflow-x-auto rounded-xl bg-black/40 p-3">
+        <pre className="font-mono text-[11px] leading-relaxed">
+          <code className="flex">
+            {/* Line numbers */}
+            <span
+              aria-hidden
+              className="mr-3 shrink-0 select-none text-right text-white/25"
+            >
+              {Array.from({ length: lineCount }, (_, i) => (
+                <div key={i}>{i + 1}</div>
+              ))}
+            </span>
+            {/* Highlighted code */}
+            <span
+              className="flex-1 text-white/80"
+              // Safe: input is HTML-escaped above; spans are produced only
+              // from JSON.stringify output, no user-controlled markup.
+              dangerouslySetInnerHTML={{ __html: highlighted }}
+            />
+          </code>
+        </pre>
+      </div>
     </div>
   );
 }
