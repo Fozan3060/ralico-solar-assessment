@@ -19,7 +19,11 @@ import {
 // give the serverless function enough headroom.
 export const maxDuration = 30;
 
-const MODEL = "llama-3.3-70b-versatile";
+// Split the model per phase to optimise the user-perceived latency:
+//   - chat (streamed to the user)  → fast 8B model for snappy time-to-first-token
+//   - extraction (runs after text)  → quality 70B model for reliable structured output
+const CHAT_MODEL = "llama-3.1-8b-instant";
+const EXTRACTION_MODEL = "llama-3.3-70b-versatile";
 
 /**
  * Phase 2 — the shape the extraction pass must return. Includes the 5 brief
@@ -71,7 +75,7 @@ export async function POST(req: Request) {
   return createDataStreamResponse({
     execute: (dataStream) => {
       const result = streamText({
-        model: groq(MODEL),
+        model: groq(CHAT_MODEL),
         system: SYSTEM_PROMPT,
         messages: conversation,
         temperature: 0.6,
@@ -90,7 +94,7 @@ export async function POST(req: Request) {
             ].join("\n");
 
             const { object } = await generateObject({
-              model: groq(MODEL),
+              model: groq(EXTRACTION_MODEL),
               schema: extractionSchema,
               system: EXTRACTION_INSTRUCTIONS,
               temperature: 0,

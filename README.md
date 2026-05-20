@@ -7,7 +7,7 @@ A two-way voice conversation that collects 5 property details and displays them 
 
 ## LLM Choice
 
-Groq with `llama-3.3-70b-versatile`. Free tier handles demo volume comfortably, sub-second inference keeps the conversation snappy, and `generateObject` + Zod gives strictly-typed field extraction in a second model call per turn.
+Groq, with two models per turn: `llama-3.1-8b-instant` for the streamed chat (snappy time-to-first-token), and `llama-3.3-70b-versatile` in a second `generateObject` call for reliable structured field extraction. Free tier handles demo volume comfortably.
 
 ## One thing the AI got wrong
 
