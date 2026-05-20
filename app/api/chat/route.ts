@@ -226,12 +226,23 @@ export async function POST(req: Request) {
             });
           } catch (error) {
             console.error("[api/chat] extraction failed:", error);
-            // Best-effort: never lose ground — keep what was already collected.
+            // Surface the failure to the client so the panel doesn't silently
+            // stay frozen — the user should see WHY their answer didn't land.
+            // We deliberately do NOT also write a `collected` data part on
+            // failure; the client retains its previous state from the last
+            // successful extraction without us having to send a stale copy.
+            const raw =
+              error instanceof Error ? error.message : String(error);
+            // Pull the human-friendly Groq message out of the wrapped payload
+            // if present, otherwise fall back to the raw error string.
+            let message = raw;
+            const groqMatch = raw.match(
+              /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/,
+            );
+            if (groqMatch) message = groqMatch[1].replace(/\\"/g, '"');
             dataStream.writeData({
-              type: "collected",
-              collected: collectedSoFar,
-              bill_unknown: false,
-              complete: isAssessmentComplete(collectedSoFar),
+              type: "extraction_error",
+              message,
             });
           }
         },

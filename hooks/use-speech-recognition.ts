@@ -4,9 +4,30 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SPEECH_LANG } from "@/lib/constants";
 
+// Several Web Speech API events aren't in TS's default DOM types. Augment
+// the interface so we can attach handlers without casting at every site.
+declare global {
+  interface SpeechRecognition {
+    onspeechstart: ((this: SpeechRecognition, ev: Event) => void) | null;
+    onaudiostart: ((this: SpeechRecognition, ev: Event) => void) | null;
+  }
+}
+
 type UseSpeechRecognitionOptions = {
-  /** Fired once with the final transcript when the user stops speaking. */
-  onResult: (transcript: string) => void;
+  /**
+   * Fired when the user stops speaking. `primary` is Chrome's top transcript
+   * candidate; `alternatives` are the other candidates Chrome considered,
+   * ranked by confidence (may be empty). The caller can pass `alternatives`
+   * to the LLM as fallback options when `primary` is a likely mis-hear.
+   */
+  onResult: (primary: string, alternatives: string[]) => void;
+  /**
+   * Fired repeatedly while the user is mid-utterance with Chrome's running
+   * best-guess transcript. Lets the caller surface real-time feedback ("you
+   * said …") so the user can see capture IS happening and isn't guessing
+   * whether the mic worked.
+   */
+  onInterim?: (transcript: string) => void;
   /**
    * Fired on any recognition error code (e.g. `'no-speech'`, `'not-allowed'`,
    * `'audio-capture'`, `'network'`). Also synthesised as `'no-speech'` when
@@ -34,21 +55,34 @@ const WATCHDOG_MS = 12_000;
  */
 export function useSpeechRecognition({
   onResult,
+  onInterim,
   onError,
 }: UseSpeechRecognitionOptions) {
   const [isSupported, setIsSupported] = useState(false);
+  // `isListening` flips true only when Chrome has actually started capturing
+  // audio (i.e. `onaudiostart` fired) — NOT the moment `recognition.start()`
+  // returns. The difference is ~100-300ms while Chrome warms up the audio
+  // pipeline and connects to Google's STT; speaking during that window
+  // drops the first word. The orb stays "thinking" amber until we're sure
+  // capture is live.
   const [isListening, setIsListening] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const onResultRef = useRef(onResult);
+  const onInterimRef = useRef(onInterim);
   const onErrorRef = useRef(onError);
   onResultRef.current = onResult;
+  onInterimRef.current = onInterim;
   onErrorRef.current = onError;
 
   // Per-session flags so `onend` can decide whether to coerce a restart.
   const resultEmittedRef = useRef(false);
   const errorEmittedRef = useRef(false);
   const intentionalStopRef = useRef(false);
+  // True once Chrome's STT reports detected voice energy on this session.
+  // Used to disarm the watchdog so we don't abort while the user is still
+  // mid-sentence (the bug behind clipped first-word captures).
+  const speechDetectedRef = useRef(false);
 
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disarmWatchdog = useCallback(() => {
@@ -84,15 +118,45 @@ export function useSpeechRecognition({
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = SPEECH_LANG;
-    recognition.interimResults = false;
+    // Interim results give us partial transcripts as the user speaks —
+    // real-time proof that capture is happening, surfaced live in the UI.
+    recognition.interimResults = true;
     recognition.continuous = false;
-    recognition.maxAlternatives = 1;
+    // Ask Chrome for its top-5 candidate transcripts, not just the best one.
+    // The top guess is often wrong on short or accented utterances (e.g.
+    // "terraced" → "terrorist") but the right answer is usually in the
+    // top 5 — we pass them all to the LLM, which picks the best fit.
+    recognition.maxAlternatives = 5;
 
+    // Fires when Chrome has actually started capturing audio — this is when
+    // the mic is genuinely live, not the moment `start()` returned. Only
+    // now is it safe to show "listening" to the user.
+    recognition.onaudiostart = () => {
+      setIsListening(true);
+    };
+    // Fires when Chrome detects voice energy. Tells us the session is
+    // healthy and disarms the long-running watchdog.
+    recognition.onspeechstart = () => {
+      speechDetectedRef.current = true;
+      disarmWatchdog();
+    };
     recognition.onresult = (event) => {
+      // Interim updates fire repeatedly mid-utterance; final fires once at
+      // the end. Surface interims live; act on final.
+      const result = event.results[event.results.length - 1];
+      if (!result) return;
+      if (!result.isFinal) {
+        const interim = result[0]?.transcript?.trim() ?? "";
+        if (interim) onInterimRef.current?.(interim);
+        return;
+      }
       resultEmittedRef.current = true;
       disarmWatchdog();
-      const transcript = event.results[0]?.[0]?.transcript?.trim();
-      if (transcript) onResultRef.current(transcript);
+      const candidates = Array.from(result, (alt) => alt.transcript.trim())
+        .filter((c) => c.length > 0);
+      const [primary, ...alternatives] = Array.from(new Set(candidates));
+      if (!primary) return;
+      onResultRef.current(primary, alternatives);
     };
     recognition.onerror = (event) => {
       errorEmittedRef.current = true;
@@ -116,6 +180,7 @@ export function useSpeechRecognition({
       resultEmittedRef.current = false;
       errorEmittedRef.current = false;
       intentionalStopRef.current = false;
+      speechDetectedRef.current = false;
     };
 
     recognitionRef.current = recognition;
@@ -124,6 +189,8 @@ export function useSpeechRecognition({
       recognition.onresult = null;
       recognition.onerror = null;
       recognition.onend = null;
+      recognition.onspeechstart = null;
+      recognition.onaudiostart = null;
       recognition.abort();
       recognitionRef.current = null;
     };
@@ -135,9 +202,13 @@ export function useSpeechRecognition({
     resultEmittedRef.current = false;
     errorEmittedRef.current = false;
     intentionalStopRef.current = false;
+    speechDetectedRef.current = false;
+    // NOTE: we deliberately do NOT setIsListening(true) here — the orb only
+    // turns cyan when Chrome fires `onaudiostart`, signalling that the mic
+    // is truly capturing. This prevents the "I see cyan but my first word
+    // got dropped" bug.
     try {
       recognition.start();
-      setIsListening(true);
       armWatchdog();
     } catch {
       // start() throws if the recogniser is already running or in a stale
@@ -147,7 +218,6 @@ export function useSpeechRecognition({
         setTimeout(() => {
           try {
             recognition.start();
-            setIsListening(true);
             armWatchdog();
           } catch {
             setIsListening(false);

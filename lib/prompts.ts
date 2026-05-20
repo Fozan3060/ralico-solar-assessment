@@ -57,7 +57,7 @@ Read the conversation transcript and extract the CURRENT confirmed value of each
 Rules:
 - User messages may include a bracketed STT-alternatives annotation (e.g., \`terrorist [STT alts: "tear race", "terraced", "terrorists"]\`). This is voice-transcription metadata. When deciding the field's value, consider BOTH the primary text and the alternatives — pick whichever candidate fits the schema's valid values. Never include the bracketed annotation in your output.
 - Only fill a field once the homeowner has clearly stated or confirmed it. Otherwise return null.
-- property_type: normalise to one of "detached", "semi-detached", "terraced", "flat".
+- property_type: normalise to one of "detached", "semi-detached", "terraced", "flat". Accept phonetic near-misses caused by voice transcription — "terrace" → "terraced", "flack" / "flap" / "fled" → "flat", "sammy detached" / "semi-tatched" → "semi-detached", "a touched" / "attached" → "detached".
 - annual_electricity_bill_gbp: a plain number in pounds — no currency symbol, no commas.
   - If the user states a figure "per month" (or equivalent), multiply by 12 to get the annual value.
   - If a range is given, use the midpoint.

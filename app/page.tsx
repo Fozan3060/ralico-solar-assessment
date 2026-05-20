@@ -28,6 +28,14 @@ export default function Home() {
   // <LiveCaption> can light up words in sync with the spoken word.
   const [spokenChars, setSpokenChars] = useState(0);
   const [karaokeActive, setKaraokeActive] = useState(false);
+  // Surfaces the last server-side extraction failure (rate limits, network,
+  // model errors) so the user sees what broke rather than wondering why
+  // their answer didn't show up in the panel.
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+  // Live partial transcript from Chrome while the user is mid-utterance.
+  // Renders in the "YOU SAID" area so users get instant visual confirmation
+  // that the mic is capturing — even before the final result lands.
+  const [interimTranscript, setInterimTranscript] = useState("");
 
   const collectedRef = useRef(collected);
   collectedRef.current = collected;
@@ -35,9 +43,6 @@ export default function Home() {
   isCompleteRef.current = isComplete;
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
-  // Refs for the recognition error handler to read fresh state.
-  const isLoadingRef = useRef(false);
-  const isSpeakingRef = useRef(false);
 
   const { messages, input, handleInputChange, setInput, append, isLoading, data } =
     useChat({ api: "/api/chat" });
@@ -52,43 +57,40 @@ export default function Home() {
   speakRef.current = speak;
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, alternatives: string[] = []) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      // When Chrome's STT supplies multiple candidate transcripts, append
+      // them to the message so the LLM can recover from a mis-hear on the
+      // primary (e.g. "terrorist" → "terraced"). Stripped before display.
+      const content =
+        alternatives.length > 0
+          ? `${trimmed} [STT alts: ${alternatives
+              .map((a) => `"${a}"`)
+              .join(", ")}]`
+          : trimmed;
       append(
-        { role: "user", content: trimmed },
+        { role: "user", content },
         { body: { currentCollected: collectedRef.current } },
       );
     },
     [append],
   );
 
-  const handleRecognitionError = useCallback((errorType: string) => {
-    // Only auto-restart on `no-speech` (real silence OR Chrome's silent-end
-    // quirk coerced into `no-speech` by the hook). Real errors — permission
-    // denied, no mic, network — should NOT loop.
-    if (errorType !== "no-speech") return;
-    if (
-      mutedRef.current ||
-      isCompleteRef.current ||
-      isLoadingRef.current ||
-      isSpeakingRef.current
-    ) {
-      return;
-    }
-    // Reopen the mic. Repeats as long as the user stays silent and we're
-    // genuinely awaiting their reply — never "halts" on silence alone.
-    setTimeout(() => {
-      if (
-        mutedRef.current ||
-        isCompleteRef.current ||
-        isLoadingRef.current ||
-        isSpeakingRef.current
-      ) {
-        return;
-      }
-      if (micSupportedRef.current) startListeningRef.current();
-    }, 300);
+  // Map Chrome's recognition error codes to user-facing messages. `no-speech`
+  // and `aborted` are routine (silence-timeout / intentional stop) and we
+  // ignore them; the rest are genuine blockers worth showing in the banner.
+  const handleMicError = useCallback((errorType: string) => {
+    if (errorType === "no-speech" || errorType === "aborted") return;
+    const message =
+      errorType === "not-allowed"
+        ? "Microphone permission was blocked. Click the mic icon in the browser address bar to allow it, then refresh."
+        : errorType === "audio-capture"
+          ? "No microphone detected. Connect one and refresh — or just type your answer in the box below."
+          : errorType === "network"
+            ? "Speech recognition service unreachable (Chrome's STT needs a network connection)."
+            : `Microphone error: ${errorType}`;
+    setExtractionError(message);
   }, []);
 
   const {
@@ -97,8 +99,14 @@ export default function Home() {
     isListening,
     isSupported: micSupported,
   } = useSpeechRecognition({
-    onResult: sendMessage,
-    onError: handleRecognitionError,
+    onResult: (primary, alternatives) => {
+      // Clear the live partial — the committed message will render via the
+      // chat history's `userEcho` slot from here on.
+      setInterimTranscript("");
+      sendMessage(primary, alternatives);
+    },
+    onInterim: (transcript) => setInterimTranscript(transcript),
+    onError: handleMicError,
   });
   const startListeningRef = useRef(startListening);
   startListeningRef.current = startListening;
@@ -107,30 +115,45 @@ export default function Home() {
 
   useEffect(() => {
     if (!data || data.length === 0) return;
-    for (let i = data.length - 1; i >= 0; i--) {
+    // Find the latest of EACH part type independently. This avoids the
+    // ordering bug where finding a fallback `collected` part clears a
+    // more-recently-written `extraction_error` before the user ever sees it.
+    type CollectedPart = {
+      collected: CollectedData;
+      bill_unknown?: boolean;
+      complete: boolean;
+    };
+    type ErrorPart = { message?: string };
+    let latestCollectedIdx = -1;
+    let latestErrorIdx = -1;
+    let latestCollectedPart: CollectedPart | undefined;
+    let latestErrorPart: ErrorPart | undefined;
+    for (let i = 0; i < data.length; i++) {
       const part = data[i];
-      if (
-        part &&
-        typeof part === "object" &&
-        !Array.isArray(part) &&
-        part.type === "collected"
-      ) {
-        const payload = part as {
-          collected: CollectedData;
-          bill_unknown?: boolean;
-          complete: boolean;
-        };
-        setCollected(payload.collected);
-        setBillUnknown(Boolean(payload.bill_unknown));
-        setIsComplete(Boolean(payload.complete));
-        return;
+      if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+      if (part.type === "collected") {
+        latestCollectedIdx = i;
+        latestCollectedPart = part as unknown as CollectedPart;
+      } else if (part.type === "extraction_error") {
+        latestErrorIdx = i;
+        latestErrorPart = part as unknown as ErrorPart;
       }
     }
+    if (latestCollectedPart) {
+      setCollected(latestCollectedPart.collected);
+      setBillUnknown(Boolean(latestCollectedPart.bill_unknown));
+      setIsComplete(Boolean(latestCollectedPart.complete));
+    }
+    // Show the error only if it's more recent than the last success — a new
+    // successful extraction implicitly clears it.
+    if (latestErrorPart && latestErrorIdx > latestCollectedIdx) {
+      setExtractionError(
+        latestErrorPart.message ?? "Extraction failed — try again.",
+      );
+    } else if (latestCollectedIdx > -1) {
+      setExtractionError(null);
+    }
   }, [data]);
-
-  // Keep refs in sync for the recognition error handler.
-  isLoadingRef.current = isLoading;
-  isSpeakingRef.current = isSpeaking;
 
   const wasLoading = useRef(false);
   useEffect(() => {
@@ -152,7 +175,15 @@ export default function Home() {
         setKaraokeActive(false);
         if (isCompleteRef.current) return;
         if (mutedRef.current) return;
-        if (micSupportedRef.current) startListeningRef.current();
+        // Tiny settle (200ms) for speaker tail to decay before the mic
+        // opens — Chrome will then take a further ~100-300ms to actually
+        // start capturing (we wait for `onaudiostart` before showing the
+        // cyan "listening" state, so the user only sees cyan when capture
+        // is genuinely live).
+        setTimeout(() => {
+          if (isCompleteRef.current || mutedRef.current) return;
+          if (micSupportedRef.current) startListeningRef.current();
+        }, 200);
       },
     });
   }, [isLoading, messages]);
@@ -210,6 +241,16 @@ export default function Home() {
     .reverse()
     .find((m) => m.role === "assistant");
   const captionText = lastAssistant?.content ?? "";
+  // Echo the user's last transcribed reply so it's visible whether the AI
+  // mis-handled a valid answer or Chrome's STT mis-heard the user. The
+  // `[STT alts: …]` annotation is an internal hint for the LLM — strip it
+  // from what the user sees.
+  const lastUser = [...visibleMessages]
+    .reverse()
+    .find((m) => m.role === "user");
+  const userEcho = (lastUser?.content ?? "")
+    .replace(/\s*\[STT alts:.+?\]\s*$/, "")
+    .trim();
   // Show the typing indicator throughout the whole streaming response — the
   // caption renders only when streaming is done. That way the text doesn't
   // jitter as tokens arrive one by one.
@@ -247,6 +288,23 @@ export default function Home() {
             onToggleMute={toggleMute}
             voiceSupported={voiceSupported}
           />
+
+          {extractionError && (
+            <div className="mx-6 mt-1 mb-1 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-red-300 mt-0.5 shrink-0">
+                error
+              </span>
+              <span className="flex-1 break-words">{extractionError}</span>
+              <button
+                type="button"
+                onClick={() => setExtractionError(null)}
+                aria-label="Dismiss"
+                className="shrink-0 text-red-300/70 hover:text-red-200"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {!isComplete && (
             <div className="px-6 pt-1 pb-2">
@@ -290,6 +348,27 @@ export default function Home() {
                   />
                 )}
               </div>
+
+              {/* User-speech echo. While Chrome is mid-utterance we show
+                  the live partial transcript (cyan) so the user can see
+                  capture happening in real time — once the final result
+                  lands it falls back to the committed transcript (dim). */}
+              {(interimTranscript || userEcho) && (
+                <p className="w-full max-w-xl text-center text-sm">
+                  <span className="mr-2 font-mono text-[10px] uppercase tracking-[0.25em] text-white/30">
+                    you said
+                  </span>
+                  <span
+                    className={
+                      interimTranscript
+                        ? "italic text-cyan-300/90"
+                        : "italic text-white/55"
+                    }
+                  >
+                    &ldquo;{interimTranscript || userEcho}&rdquo;
+                  </span>
+                </p>
+              )}
             </div>
           </main>
 
