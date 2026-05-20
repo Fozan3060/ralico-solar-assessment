@@ -72,7 +72,7 @@ const MOCK_TURNS: MockTurn[] = [
   },
   {
     text:
-      "Three people — got it. What kind of heating system do you have: gas boiler, oil, LPG, electric, heat pump, or something else?",
+      "Three people — got it. What kind of heating system do you have: gas boiler, oil, LPG, electric, or something else?",
     collected: {
       ...EMPTY_COLLECTED,
       property_type: "flat",
