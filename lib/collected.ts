@@ -46,7 +46,24 @@ export function countFilledFields(collected: CollectedData): number {
   return FIELD_KEYS.filter((key) => collected[key] !== null).length;
 }
 
-/** True once all five fields have been collected. */
-export function isAssessmentComplete(collected: CollectedData): boolean {
-  return countFilledFields(collected) === FIELD_KEYS.length;
+/**
+ * True once the assessment can be considered finished — either all five fields
+ * have a value, or every field except the bill has a value AND the user has
+ * explicitly said they don't know the bill (`billUnknown` true).
+ */
+export function isAssessmentComplete(
+  collected: CollectedData,
+  billUnknown = false,
+): boolean {
+  const allFilled = FIELD_KEYS.every((key) => collected[key] !== null);
+  if (allFilled) return true;
+
+  // Special case: bill is the one field we accept "I don't know" for.
+  if (billUnknown) {
+    return FIELD_KEYS.filter((k) => k !== "annual_electricity_bill_gbp").every(
+      (k) => collected[k] !== null,
+    );
+  }
+
+  return false;
 }

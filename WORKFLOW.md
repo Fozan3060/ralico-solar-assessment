@@ -116,3 +116,28 @@ A running list of mistakes caught and fixed during the build (feeds the README's
   - Fades in + slides up on reveal (`animate-fade-in-up` keyframe).
 - The composer lock (the "Assessment complete" bar) was already wired up in
   `feature/chat-ui` and continues to drive from the same `isComplete` flag.
+
+### feature/polish
+
+- **Mobile sweep** — capped the data panel at `40vh` with internal scroll on small
+  screens so the chat doesn't get pushed off the viewport. Composer mic + send buttons
+  use `shrink-0` so they can never overlap the text input on narrow screens.
+- Added `app/loading.tsx` — a skeleton that silhouettes the start-screen layout so
+  the swap into the real page isn't jarring.
+- Wrote `README.md` (≤200 words) with the three required sections: LLM choice
+  (Groq + `llama-3.3-70b-versatile`), one thing the AI got wrong (the voice-input
+  gap), and what I would improve.
+- **Edge-case fixes during polish:**
+  - **Monthly vs annual bill** — silent 12× bug risk if the user said "£100" meaning
+    monthly. Patched both prompts: `SYSTEM_PROMPT` now asks the user to clarify
+    monthly vs annual on suspiciously small figures, and `EXTRACTION_INSTRUCTIONS`
+    multiplies by 12 when the user explicitly says "per month" (and returns `null`
+    on truly ambiguous units).
+  - **"I don't know" handling for the bill** — `SYSTEM_PROMPT` now offers a typical
+    UK estimate ("£800–£1,500 / year — does that sound about right?"); if the user
+    still genuinely doesn't know, the extractor sets `bill_unknown: true`. The
+    completion check (`isAssessmentComplete`) treats the bill as answered when
+    either it has a value OR `bill_unknown` is true, so the conversation can end
+    cleanly. The data panel flips the bill row from "Pending" to "Not sure" (still
+    with the amber check). The final JSON keeps the brief's shape — bill is `null`
+    when truly unknown — so the data contract is unchanged.
