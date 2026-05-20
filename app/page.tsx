@@ -77,9 +77,11 @@ export default function Home() {
     [append],
   );
 
-  // Map Chrome's recognition error codes to user-facing messages. `no-speech`
-  // and `aborted` are routine (silence-timeout / intentional stop) and we
-  // ignore them; the rest are genuine blockers worth showing in the banner.
+  // Map Chrome's recognition error codes to user-facing messages.
+  // `no-speech` and `aborted` are routine (silence-timeout / intentional
+  // stop) and we ignore them — the mic just closes and the hint text
+  // tells the user to tap to re-engage. Other codes are real blockers
+  // and get surfaced to the banner.
   const handleMicError = useCallback((errorType: string) => {
     if (errorType === "no-speech" || errorType === "aborted") return;
     const message =
@@ -368,6 +370,27 @@ export default function Home() {
               )}
             </div>
           </main>
+
+          {/* State-aware hint so the user learns the orb's colour convention
+              without reading docs: "speak when the orb is blue". The line
+              tracks the orb state directly. Hidden when the assessment is
+              complete or while we're still loading the first AI response. */}
+          {!isComplete && messages.length > 1 && (
+            <p className="px-6 pb-1 text-center text-xs text-white/40">
+              {orbState === "thinking" ? (
+                "Thinking…"
+              ) : orbState === "speaking" ? (
+                "Wait until the orb turns blue…"
+              ) : orbState === "listening" ? (
+                <>
+                  <span className="mr-1.5 text-cyan-400">●</span>
+                  Speak now
+                </>
+              ) : (
+                "Tap the mic to speak"
+              )}
+            </p>
+          )}
 
           <ChatComposer
             input={input}

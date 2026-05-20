@@ -83,6 +83,31 @@ export function useSpeechRecognition({
   // Used to disarm the watchdog so we don't abort while the user is still
   // mid-sentence (the bug behind clipped first-word captures).
   const speechDetectedRef = useRef(false);
+  // With `continuous: true`, Chrome may fire multiple final results in one
+  // session (the user spoke, paused, spoke again). We accumulate them and
+  // fire `onResult` only after the user has been silent for `END_OF_UTTERANCE_MS`
+  // — gives them room to think mid-sentence without us prematurely sending.
+  const accumulatedRef = useRef("");
+  const accumulatedAltsRef = useRef<string[]>([]);
+  const endOfUtteranceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const clearEndOfUtteranceTimer = useCallback(() => {
+    if (endOfUtteranceTimerRef.current) {
+      clearTimeout(endOfUtteranceTimerRef.current);
+      endOfUtteranceTimerRef.current = null;
+    }
+  }, []);
+
+  const fireAccumulated = useCallback(() => {
+    clearEndOfUtteranceTimer();
+    const text = accumulatedRef.current.trim();
+    const alts = accumulatedAltsRef.current;
+    accumulatedRef.current = "";
+    accumulatedAltsRef.current = [];
+    if (text) onResultRef.current(text, alts);
+  }, [clearEndOfUtteranceTimer]);
 
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disarmWatchdog = useCallback(() => {
@@ -121,7 +146,13 @@ export function useSpeechRecognition({
     // Interim results give us partial transcripts as the user speaks —
     // real-time proof that capture is happening, surfaced live in the UI.
     recognition.interimResults = true;
-    recognition.continuous = false;
+    // Continuous = true is the crucial bit. With `false`, Chrome ends the
+    // session the moment it detects ~5s of silence — so any pause to think
+    // closes the mic and forces a restart. With `true`, Chrome keeps the
+    // same session open across pauses; we get multiple final results in
+    // one session and use our own debounce timer to decide when the user
+    // is actually done speaking.
+    recognition.continuous = true;
     // Ask Chrome for its top-5 candidate transcripts, not just the best one.
     // The top guess is often wrong on short or accented utterances (e.g.
     // "terraced" → "terrorist") but the right answer is usually in the
@@ -141,22 +172,34 @@ export function useSpeechRecognition({
       disarmWatchdog();
     };
     recognition.onresult = (event) => {
-      // Interim updates fire repeatedly mid-utterance; final fires once at
-      // the end. Surface interims live; act on final.
+      // In continuous mode, `event.results` accumulates across the session.
+      // We always look at the newest result.
       const result = event.results[event.results.length - 1];
       if (!result) return;
+      disarmWatchdog();
       if (!result.isFinal) {
+        // Interim — show the user (and any prior accumulated text) live.
         const interim = result[0]?.transcript?.trim() ?? "";
-        if (interim) onInterimRef.current?.(interim);
+        const combined = (accumulatedRef.current + " " + interim).trim();
+        if (combined) onInterimRef.current?.(combined);
         return;
       }
+      // Final result for one utterance. Accumulate, then debounce — if no
+      // more results arrive within END_OF_UTTERANCE_MS, the user has stopped
+      // and we fire onResult with everything they said.
       resultEmittedRef.current = true;
-      disarmWatchdog();
       const candidates = Array.from(result, (alt) => alt.transcript.trim())
         .filter((c) => c.length > 0);
       const [primary, ...alternatives] = Array.from(new Set(candidates));
       if (!primary) return;
-      onResultRef.current(primary, alternatives);
+      accumulatedRef.current = (
+        accumulatedRef.current +
+        " " +
+        primary
+      ).trim();
+      accumulatedAltsRef.current = alternatives;
+      clearEndOfUtteranceTimer();
+      endOfUtteranceTimerRef.current = setTimeout(fireAccumulated, 1500);
     };
     recognition.onerror = (event) => {
       errorEmittedRef.current = true;
@@ -167,9 +210,14 @@ export function useSpeechRecognition({
     recognition.onend = () => {
       disarmWatchdog();
       setIsListening(false);
+      // If the session ended with accumulated-but-not-yet-fired text, fire
+      // it now — don't lose what the user said.
+      if (accumulatedRef.current.trim()) {
+        fireAccumulated();
+      }
       // Chrome quirk: sometimes the session ends with no result, no error
-      // and we didn't stop it ourselves. Coerce a `no-speech` so the caller's
-      // auto-restart logic fires.
+      // and we didn't stop it ourselves. Coerce a `no-speech` so the caller
+      // can react (e.g. show "tap to speak").
       if (
         !resultEmittedRef.current &&
         !errorEmittedRef.current &&
@@ -186,6 +234,7 @@ export function useSpeechRecognition({
     recognitionRef.current = recognition;
     return () => {
       disarmWatchdog();
+      clearEndOfUtteranceTimer();
       recognition.onresult = null;
       recognition.onerror = null;
       recognition.onend = null;
@@ -194,7 +243,7 @@ export function useSpeechRecognition({
       recognition.abort();
       recognitionRef.current = null;
     };
-  }, [disarmWatchdog]);
+  }, [disarmWatchdog, clearEndOfUtteranceTimer, fireAccumulated]);
 
   const start = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -203,6 +252,9 @@ export function useSpeechRecognition({
     errorEmittedRef.current = false;
     intentionalStopRef.current = false;
     speechDetectedRef.current = false;
+    accumulatedRef.current = "";
+    accumulatedAltsRef.current = [];
+    clearEndOfUtteranceTimer();
     // NOTE: we deliberately do NOT setIsListening(true) here — the orb only
     // turns cyan when Chrome fires `onaudiostart`, signalling that the mic
     // is truly capturing. This prevents the "I see cyan but my first word
@@ -227,14 +279,21 @@ export function useSpeechRecognition({
         setIsListening(false);
       }
     }
-  }, [armWatchdog]);
+  }, [armWatchdog, clearEndOfUtteranceTimer]);
 
   const stop = useCallback(() => {
     intentionalStopRef.current = true;
     disarmWatchdog();
+    // If there's accumulated text waiting on the debounce, fire it now
+    // before the session closes — don't lose what the user said.
+    if (accumulatedRef.current.trim()) {
+      fireAccumulated();
+    } else {
+      clearEndOfUtteranceTimer();
+    }
     recognitionRef.current?.stop();
     setIsListening(false);
-  }, [disarmWatchdog]);
+  }, [disarmWatchdog, fireAccumulated, clearEndOfUtteranceTimer]);
 
   return { isSupported, isListening, start, stop };
 }
