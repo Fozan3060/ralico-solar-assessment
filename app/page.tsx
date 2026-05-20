@@ -175,15 +175,12 @@ export default function Home() {
         setKaraokeActive(false);
         if (isCompleteRef.current) return;
         if (mutedRef.current) return;
-        // Tiny settle (200ms) for speaker tail to decay before the mic
-        // opens — Chrome will then take a further ~100-300ms to actually
-        // start capturing (we wait for `onaudiostart` before showing the
-        // cyan "listening" state, so the user only sees cyan when capture
-        // is genuinely live).
-        setTimeout(() => {
-          if (isCompleteRef.current || mutedRef.current) return;
-          if (micSupportedRef.current) startListeningRef.current();
-        }, 200);
+        // Start recognition the instant TTS ends — no fixed timer. Chrome
+        // will take ~100-300ms to actually start capturing, and the orb
+        // only flips to cyan when its `onaudiostart` event fires (handled
+        // in the hook). So the visible "listening" state is bound to a
+        // real browser event, not a guess.
+        if (micSupportedRef.current) startListeningRef.current();
       },
     });
   }, [isLoading, messages]);
