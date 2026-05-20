@@ -66,10 +66,12 @@ A running list of mistakes caught and fixed during the build (feeds the README's
     fixed system prompt, streamed to the client via `createDataStreamResponse`.
   - **Phase 2 (extract):** inside `streamText`'s `onFinish`, `generateObject` re-reads
     the whole transcript against a Zod schema and reports all five fields' values.
-- **Safety merge** (`lib/collected.ts`): a field already non-null in the client's
-  `currentCollected` is never overwritten — so a confirmed field cannot regress to
-  null even if an extraction pass misses it. The merged result plus a `complete` flag
-  are appended to the stream as a `{ type: "collected" }` data part.
+- **Safety merge** (`lib/collected.ts`): per field, take the new extraction unless
+  it is `null`, in which case keep the previous value. So `null → value` (newly
+  filled) and `value → newValue` (legitimate correction) both work, while
+  `value → null` (the extraction-forgot-a-field bug) is rejected. The merged
+  result plus a `complete` flag are appended to the stream as a
+  `{ type: "collected" }` data part.
 - Prompts isolated in `lib/prompts.ts`; collected-data helpers in `lib/collected.ts`.
 - Extraction is best-effort: if it throws, the previously collected state is preserved.
 

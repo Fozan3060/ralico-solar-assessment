@@ -19,25 +19,34 @@ export const EMPTY_COLLECTED: CollectedData = {
 };
 
 /**
- * Safety merge. A field that is already non-null in `prev` is kept exactly as
- * it was; only null fields in `prev` may be filled in from `next`.
+ * Safety merge. Defends against the field-regression bug — i.e. an extraction
+ * pass dropping a previously-confirmed field back to null — while still
+ * letting a legitimate *value* update through (the user correcting an answer).
  *
- * This is the server-side guarantee against the field-regression bug: once a
- * field has been confirmed it can never revert to null, even if a later
- * extraction pass fails to spot it.
+ * The rule per field: take the new extraction unless it is null, in which case
+ * keep the old value. So `null → value` (newly filled), `value → null` (kept,
+ * no regression), and `value → newValue` (correction accepted) all work.
  */
+function preferNonNull<T>(next: T | null, prev: T | null): T | null {
+  return next ?? prev;
+}
+
 export function mergeCollected(
   prev: CollectedData,
   next: CollectedData,
 ): CollectedData {
   return {
-    property_type: prev.property_type ?? next.property_type,
-    annual_electricity_bill_gbp:
-      prev.annual_electricity_bill_gbp ?? next.annual_electricity_bill_gbp,
-    number_of_occupants:
-      prev.number_of_occupants ?? next.number_of_occupants,
-    heating_system: prev.heating_system ?? next.heating_system,
-    solar_interest: prev.solar_interest ?? next.solar_interest,
+    property_type: preferNonNull(next.property_type, prev.property_type),
+    annual_electricity_bill_gbp: preferNonNull(
+      next.annual_electricity_bill_gbp,
+      prev.annual_electricity_bill_gbp,
+    ),
+    number_of_occupants: preferNonNull(
+      next.number_of_occupants,
+      prev.number_of_occupants,
+    ),
+    heating_system: preferNonNull(next.heating_system, prev.heating_system),
+    solar_interest: preferNonNull(next.solar_interest, prev.solar_interest),
   };
 }
 
