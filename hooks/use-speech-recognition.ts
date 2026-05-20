@@ -72,7 +72,21 @@ export function useSpeechRecognition({
       recognition.start();
       setIsListening(true);
     } catch {
-      // start() throws if already running — safe to ignore.
+      // start() throws if the recogniser is already running or in a stale
+      // state. Abort to reset, then try once more on the next tick.
+      try {
+        recognition.abort();
+        setTimeout(() => {
+          try {
+            recognition.start();
+            setIsListening(true);
+          } catch {
+            setIsListening(false);
+          }
+        }, 80);
+      } catch {
+        setIsListening(false);
+      }
     }
   }, []);
 

@@ -108,6 +108,7 @@ export default function Home() {
 
     speakRef.current(last.content, () => {
       if (isCompleteRef.current) return; // assessment finished — end the loop
+      if (mutedRef.current) return; // user muted mid-speech — don't reopen the mic
       if (micSupportedRef.current) startListeningRef.current();
     });
   }, [isLoading, messages]);

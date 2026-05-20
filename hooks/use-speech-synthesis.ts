@@ -8,6 +8,12 @@ import { SPEECH_LANG } from "@/lib/constants";
  * Thin wrapper over the browser's `speechSynthesis` API (text → speech) — this
  * is what gives the assistant a voice. `speak()` takes an optional `onEnd`
  * callback, which the call loop uses to know when to start listening again.
+ *
+ * Two safety nets sit on top of the raw API, because Chrome's `onend` event
+ * can silently fail to fire (especially after canceled speech):
+ *  - a poller that watches `speechSynthesis.speaking` and fires `onEnd` the
+ *    moment it flips back to false;
+ *  - a hard timeout so the call loop can never stall indefinitely.
  */
 export function useSpeechSynthesis() {
   const [isSupported, setIsSupported] = useState(false);
@@ -51,15 +57,38 @@ export function useSpeechSynthesis() {
     utterance.lang = voiceRef.current?.lang ?? SPEECH_LANG;
     utterance.rate = 1;
     utterance.pitch = 1;
+
+    let finished = false;
+    let speakingObserved = false;
+    let endPoller: ReturnType<typeof setInterval> | null = null;
+    let hardTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      if (endPoller) clearInterval(endPoller);
+      if (hardTimeout) clearTimeout(hardTimeout);
+      setIsSpeaking(false);
+      onEnd?.();
+    };
+
     utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      onEnd?.();
-    };
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      onEnd?.();
-    };
+    utterance.onend = complete;
+    utterance.onerror = complete;
+
+    // Safety net 1: poll for the end. Chrome occasionally drops `onend`
+    // silently — watching `speechSynthesis.speaking` catches that.
+    endPoller = setInterval(() => {
+      if (window.speechSynthesis.speaking) {
+        speakingObserved = true;
+      } else if (speakingObserved) {
+        complete();
+      }
+    }, 250);
+
+    // Safety net 2: a hard ceiling so the call loop can never stall forever.
+    // ~100ms / character is generous for a normal TTS rate, then a 5s buffer.
+    hardTimeout = setTimeout(complete, text.length * 100 + 5000);
 
     window.speechSynthesis.speak(utterance);
   }, []);
