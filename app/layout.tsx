@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
-import { Outfit, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
-  subsets: ["latin"],
-  display: "swap",
-});
-
+// Only mono is loaded as a web font. The body uses the OS system font stack
+// (SF Pro on macOS, Segoe UI on Windows, Roboto on Android) for a premium,
+// native feel — defined in globals.css via --font-sans.
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
@@ -17,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Ralico — Solar Property Assessment",
   description:
-    "Chat with Ralico's assistant for a quick solar suitability assessment of your UK property.",
+    "A voice conversation that finds out if solar fits your home — five questions, two minutes.",
 };
 
 export default function RootLayout({
@@ -28,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${outfit.variable} ${jetbrainsMono.variable} antialiased`}
+        className={`${jetbrainsMono.variable} bg-[#05070d] text-white antialiased`}
       >
         {children}
       </body>

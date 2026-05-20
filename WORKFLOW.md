@@ -66,10 +66,12 @@ A running list of mistakes caught and fixed during the build (feeds the README's
     fixed system prompt, streamed to the client via `createDataStreamResponse`.
   - **Phase 2 (extract):** inside `streamText`'s `onFinish`, `generateObject` re-reads
     the whole transcript against a Zod schema and reports all five fields' values.
-- **Safety merge** (`lib/collected.ts`): a field already non-null in the client's
-  `currentCollected` is never overwritten — so a confirmed field cannot regress to
-  null even if an extraction pass misses it. The merged result plus a `complete` flag
-  are appended to the stream as a `{ type: "collected" }` data part.
+- **Safety merge** (`lib/collected.ts`): per field, take the new extraction unless
+  it is `null`, in which case keep the previous value. So `null → value` (newly
+  filled) and `value → newValue` (legitimate correction) both work, while
+  `value → null` (the extraction-forgot-a-field bug) is rejected. The merged
+  result plus a `complete` flag are appended to the stream as a
+  `{ type: "collected" }` data part.
 - Prompts isolated in `lib/prompts.ts`; collected-data helpers in `lib/collected.ts`.
 - Extraction is best-effort: if it throws, the previously collected state is preserved.
 
@@ -141,3 +143,128 @@ A running list of mistakes caught and fixed during the build (feeds the README's
     cleanly. The data panel flips the bill row from "Pending" to "Not sure" (still
     with the amber check). The final JSON keeps the brief's shape — bill is `null`
     when truly unknown — so the data contract is unchanged.
+
+### fix/polish-followup
+
+Visual redesign (dark theme, hero orb, glassmorphic shell) plus a long arc of
+chasing one specific bug: **the user speaks, but the mic doesn't capture it**.
+The root cause turned out to be a single line of configuration; finding it
+took several wrong turns. Documenting the arc here because the wrong turns
+were the most instructive part.
+
+**Visual polish**
+
+- Solid amber sun orb (3 nested rings + halo + gradient core + shimmer +
+  orbital dashed ring on active states); colour shifts cyan when listening.
+- `<Waveform>` between orb and caption — cosine-envelope bars (taller in the
+  middle), fades in/out smoothly so the layout never jumps.
+- `<LiveCaption>` with karaoke-style highlight — words brighten in sync with
+  the spoken word via `SpeechSynthesisUtterance.onboundary`. Fallback when
+  the browser doesn't fire `onboundary` (Firefox): everything stays bright,
+  which is fine.
+- `<ProgressDots>` above the orb + a slim amber progress bar at the bottom of
+  the data panel. Two complementary progress reads.
+- Field cards in the panel mirror the real global activity (`activityState`
+  prop) — labels and colours change to "Asking…" / "Listening…" / "Thinking…"
+  matching the orb so the panel never claims listening when the mic is closed.
+- `<MeshBackground>` — three radial gradient blobs (amber/cyan/violet) over a
+  fine dot grid + vignette. Pure CSS, no animation loops needed.
+- `<JsonOutput>` — line-numbered, syntax-highlighted final JSON with a Copy
+  button. Cyan keys, amber strings, violet numbers.
+
+**Voice / mic capture — the engineering arc**
+
+The visible bug: orb turns cyan, user speaks immediately, first word gets
+dropped. Especially short single-syllable answers like "flat" or "two".
+Inconsistent across attempts.
+
+Wrong hypotheses (and what I tried before finding the real fix):
+
+1. *"Speaker tail is bleeding into the mic"* — added a 700ms settle delay
+   between TTS `onEnd` and `recognition.start()`. Helped marginally on the
+   first word but didn't solve it.
+2. *"Chrome's onresult fires too late"* — enabled `interimResults: true` so
+   partial transcripts surface as the user speaks. This was useful (gave us
+   the live "YOU SAID …" UI element) but didn't address the underlying
+   capture problem.
+3. *"The orb lies about listening state"* — discovered that Chrome's
+   `onaudiostart` event fires when capture actually begins (separately from
+   the moment `recognition.start()` returns, which is just acknowledging the
+   request). Tied `isListening = true` to that event, so the cyan orb only
+   appears when Chrome is genuinely capturing. The right architectural change
+   — but the underlying bug was elsewhere.
+4. *"We need to restart on silence-timeout"* — Chrome closes the session
+   after ~5s of silence with `continuous: false`. Added an auto-restart
+   loop. Worked partially but introduced new bugs: race conditions on rapid
+   `no-speech` events, visible orb flicker during the restart gap, lost
+   speech in the 100ms reopen window. Three iterations, each adding more
+   compensation. None felt right.
+
+The actual fix: **`recognition.continuous = true`**.
+
+With `false` (the default most tutorials use), Chrome treats the session as
+a single utterance and closes it on the first detected silence — that's what
+was forcing the restart loop. With `true`, Chrome treats it as a dictation
+stream: pauses don't close the session, multiple final results stream in
+within one long-running session. No restart loop needed, no flicker, no
+race conditions.
+
+End-of-utterance detection then becomes our problem. Pattern: each final
+result resets a 1500ms debounce timer. As long as the user keeps speaking
+(even with thoughtful mid-sentence pauses), the timer keeps getting pushed.
+When it finally expires, the accumulated text fires as one user message to
+the LLM.
+
+The whole arc taught me that the Web Speech API is more flexible than most
+tutorials suggest — most articles use `continuous: false` and write
+workarounds for the silence-close behaviour. For any genuinely
+conversational use case, `continuous: true` is the right default.
+
+**Visible errors instead of silent failures**
+
+Extraction failures (especially Groq rate limits) were being silently
+swallowed by a `catch` block that wrote a stale fallback `collected` part.
+Result: the panel just stopped updating with no explanation, and the user
+had no idea why their answer didn't show up.
+
+Fix: added a separate `extraction_error` data part type. The client maintains
+a `latest-of-each-type` mapping for the streaming data parts (because just
+finding the latest of any-type meant a fallback `collected` could mask a
+more recent error). A red dismissable banner above the progress dots renders
+the actual upstream error message verbatim. Recruiters testing now see
+exactly what's wrong, including the Groq URL to upgrade if they hit the
+free-tier limit.
+
+Same banner also surfaces mic errors (`not-allowed`, `audio-capture`,
+`network`) with actionable messages. `no-speech` and `aborted` are routine
+and stay silent.
+
+**STT mishear recovery**
+
+Two complementary mechanisms for when Chrome's top-1 transcript is wrong:
+
+- **`maxAlternatives = 5`** — Chrome's STT generates multiple candidate
+  transcripts internally but only returns the top one by default. Bumping
+  to 5 means when "terraced" comes back as "terrorist", the right answer is
+  usually in the top 5. The hook accumulates them and passes through to the
+  LLM with a `[STT alts: …]` annotation, stripped before display.
+- **Phonetic-similarity rule** in chat and extraction prompts. For when
+  Chrome's top-5 doesn't contain the right word but a phonetic near-miss
+  does ("terrace" → "terraced", "flack" → "flat", "boy lure" → "boiler").
+  Mirrored across both prompts so the chat phase and extraction phase don't
+  disagree (an earlier bug we hit: chat accepted, extraction said null,
+  panel stayed empty).
+
+**Heating-system spec alignment**
+
+The original brief listed 6 heating options including "heat pump"; the
+recruiter's actual email lists 5 (heat pump folded into "other"). Aligned
+to the email — the contract is the contract. Heat pump answers normalise
+to `"other"` in extraction with a comment explaining why.
+
+**State-aware hint line**
+
+Small text above the composer that mirrors the orb colour in plain words:
+"Thinking…" / "Wait until the orb turns blue…" / "● Speak now" / "Tap the
+mic to speak". Teaches the orb-colour convention without docs, and tells
+the user the exact next action when the mic closes on Chrome's hard limit.
