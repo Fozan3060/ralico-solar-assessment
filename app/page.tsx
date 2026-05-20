@@ -5,9 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatHeader } from "@/components/chat/chat-header";
-import { MessageBubble } from "@/components/chat/message-bubble";
+import { LiveCaption } from "@/components/chat/live-caption";
+import { MeshBackground } from "@/components/chat/mesh-background";
 import { StartScreen } from "@/components/chat/start-screen";
-import { TypingIndicator } from "@/components/chat/typing-indicator";
 import { VoiceOrb, type OrbState } from "@/components/chat/voice-orb";
 import { DataPanel } from "@/components/data-panel/data-panel";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
@@ -152,18 +152,22 @@ export default function Home() {
     });
   }, [cancelSpeech, stopListening]);
 
-  // Auto-scroll the transcript to the newest message.
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
-
   if (!started) {
-    return <StartScreen onStart={handleStart} micSupported={micSupported} />;
+    return (
+      <>
+        <MeshBackground />
+        <StartScreen onStart={handleStart} micSupported={micSupported} />
+      </>
+    );
   }
 
-  // messages[0] is the hidden trigger; everything after it is visible.
+  // The hidden trigger message is messages[0]; everything after it is visible
+  // in the transcript. The live caption shows the assistant's latest reply.
   const visibleMessages = messages.slice(1);
+  const lastAssistant = [...visibleMessages]
+    .reverse()
+    .find((m) => m.role === "assistant");
+  const captionText = lastAssistant?.content ?? "";
   const showTyping =
     isLoading && messages[messages.length - 1]?.role === "user";
 
@@ -173,45 +177,57 @@ export default function Home() {
   else if (isListening) orbState = "listening";
 
   return (
-    <div className="flex h-dvh flex-col md:flex-row">
-      <DataPanel
-        collected={collected}
-        isComplete={isComplete}
-        billUnknown={billUnknown}
-      />
-
-      <div className="flex min-h-0 flex-1 flex-col bg-white md:order-1">
-        <ChatHeader
-          filledCount={countFilledFields(collected)}
-          muted={muted}
-          onToggleMute={toggleMute}
-          voiceSupported={voiceSupported}
-        />
-        <VoiceOrb state={orbState} />
-
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-          {visibleMessages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              role={message.role}
-              content={message.content}
-            />
-          ))}
-          {showTyping && <TypingIndicator />}
-          <div ref={transcriptEndRef} />
-        </div>
-
-        <ChatComposer
-          input={input}
-          onInputChange={handleInputChange}
-          onSend={handleSend}
-          onMicClick={handleMicClick}
-          isListening={isListening}
-          micSupported={micSupported}
-          isLoading={isLoading}
+    <>
+      <MeshBackground />
+      <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
+        <DataPanel
+          collected={collected}
           isComplete={isComplete}
+          billUnknown={billUnknown}
         />
+
+        <div className="flex min-h-0 flex-1 flex-col md:order-1">
+          <ChatHeader
+            filledCount={countFilledFields(collected)}
+            muted={muted}
+            onToggleMute={toggleMute}
+            voiceSupported={voiceSupported}
+          />
+
+          <main className="flex min-h-0 flex-1 items-center justify-center px-6 py-6">
+            <div className="flex w-full max-w-2xl flex-col items-center gap-8">
+              <VoiceOrb state={orbState} />
+              {showTyping ? (
+                <div
+                  className="flex items-center gap-1.5 py-2"
+                  aria-label="Thinking"
+                >
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="h-2 w-2 animate-bounce rounded-full bg-amber-400/70"
+                      style={{ animationDelay: `${i * 0.18}s` }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <LiveCaption text={captionText} />
+              )}
+            </div>
+          </main>
+
+          <ChatComposer
+            input={input}
+            onInputChange={handleInputChange}
+            onSend={handleSend}
+            onMicClick={handleMicClick}
+            isListening={isListening}
+            micSupported={micSupported}
+            isLoading={isLoading}
+            isComplete={isComplete}
+          />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

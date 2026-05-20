@@ -25,12 +25,8 @@ export function FieldCard({
 }) {
   const filled = value !== null && value !== undefined;
   const confirmedUnknown = !filled && unknown;
-  // "Confirmed" = the user has given us an answer (a value OR an explicit
-  // "I don't know"). This is what drives the check pill + the animation.
   const confirmed = filled || confirmedUnknown;
 
-  // Track previous confirmed state so we can fire the animation exactly once
-  // when unconfirmed → confirmed happens (and not on the initial mount).
   const wasConfirmed = useRef(confirmed);
   const [justConfirmed, setJustConfirmed] = useState(false);
 
@@ -49,8 +45,8 @@ export function FieldCard({
       className={cn(
         "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors duration-500",
         confirmed
-          ? "border-amber-500/25 bg-slate-900/80"
-          : "border-slate-800/80 bg-slate-900/40",
+          ? "border-amber-500/25 bg-amber-500/[0.08]"
+          : "border-white/[0.06] bg-white/[0.02]",
         justConfirmed && "animate-fill-pop",
       )}
     >
@@ -59,7 +55,7 @@ export function FieldCard({
       </span>
 
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
           {field.label}
         </div>
         <div
@@ -80,7 +76,7 @@ export function FieldCard({
 
       {confirmed && (
         <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-400"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-300"
           aria-label={confirmedUnknown ? "Marked unknown" : "Collected"}
         >
           <Check className="h-3.5 w-3.5" strokeWidth={3} />

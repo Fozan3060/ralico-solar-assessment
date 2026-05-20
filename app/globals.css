@@ -175,3 +175,86 @@
 .animate-fill-pop {
   animation: fill-pop 0.55s ease-out;
 }
+
+/* --- Background mesh & orb effects (modern voice-call vibe) --- */
+
+@keyframes mesh-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(40px, -30px) scale(1.1);
+  }
+}
+
+@keyframes mesh-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-50px, 40px) scale(1.15);
+  }
+}
+
+@keyframes mesh-drift-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(30px, 60px) scale(0.95);
+  }
+}
+
+@keyframes orb-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes ripple {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.animate-mesh-a {
+  animation: mesh-drift-a 22s ease-in-out infinite;
+}
+.animate-mesh-b {
+  animation: mesh-drift-b 28s ease-in-out infinite;
+}
+.animate-mesh-c {
+  animation: mesh-drift-c 24s ease-in-out infinite;
+}
+.animate-orb-rotate {
+  animation: orb-rotate 22s linear infinite;
+}
+.animate-glow-pulse {
+  animation: glow-pulse 3.6s ease-in-out infinite;
+}
+.animate-ripple {
+  animation: ripple 2.4s ease-out infinite;
+}
