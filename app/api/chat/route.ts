@@ -21,13 +21,19 @@ export const maxDuration = 30;
 
 const MODEL = "llama-3.3-70b-versatile";
 
-/** Phase 2 — the shape the extraction pass must return. */
+/**
+ * Phase 2 — the shape the extraction pass must return. Includes the 5 brief
+ * fields plus a `bill_unknown` flag, set true only when the user has
+ * explicitly said they don't know their annual bill even after being offered
+ * a typical UK estimate.
+ */
 const extractionSchema = z.object({
   property_type: z.string().nullable(),
   annual_electricity_bill_gbp: z.number().nullable(),
   number_of_occupants: z.number().int().nullable(),
   heating_system: z.string().nullable(),
   solar_interest: z.string().nullable(),
+  bill_unknown: z.boolean(),
 });
 
 /** A CoreMessage's content can be a string or structured parts — flatten it. */
@@ -94,14 +100,18 @@ export async function POST(req: Request) {
                 `has not yet been confirmed by the homeowner.`,
             });
 
+            // Pull the "metadata" flag out; the rest is regular CollectedData.
+            const { bill_unknown, ...collectedFromExtraction } = object;
+
             // Safety merge — a field already confirmed in `currentCollected`
             // is never overwritten or regressed back to null.
-            const merged = mergeCollected(collectedSoFar, object);
+            const merged = mergeCollected(collectedSoFar, collectedFromExtraction);
 
             dataStream.writeData({
               type: "collected",
               collected: merged,
-              complete: isAssessmentComplete(merged),
+              bill_unknown,
+              complete: isAssessmentComplete(merged, bill_unknown),
             });
           } catch (error) {
             console.error("[api/chat] extraction failed:", error);
@@ -109,6 +119,7 @@ export async function POST(req: Request) {
             dataStream.writeData({
               type: "collected",
               collected: collectedSoFar,
+              bill_unknown: false,
               complete: isAssessmentComplete(collectedSoFar),
             });
           }

@@ -8,16 +8,21 @@ import { JsonOutput } from "./json-output";
  * The right-hand assessment panel — one card per collected field, on a dark
  * navy background. Cards animate as fields fill in. When the assessment is
  * complete, the final JSON object is revealed below the cards.
+ *
+ * `billUnknown` flips the bill row's display to "Not sure" once the user
+ * has explicitly said they don't know their annual bill.
  */
 export function DataPanel({
   collected,
   isComplete,
+  billUnknown,
 }: {
   collected: CollectedData;
   isComplete: boolean;
+  billUnknown: boolean;
 }) {
   return (
-    <aside className="w-full shrink-0 bg-slate-950 p-5 text-slate-100 md:order-2 md:w-80 md:overflow-y-auto">
+    <aside className="max-h-[40vh] w-full shrink-0 overflow-y-auto bg-slate-950 p-5 text-slate-100 md:order-2 md:max-h-none md:w-80">
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
         Assessment
       </h2>
@@ -28,6 +33,9 @@ export function DataPanel({
             key={field.key}
             field={field}
             value={collected[field.key]}
+            unknown={
+              field.key === "annual_electricity_bill_gbp" ? billUnknown : false
+            }
           />
         ))}
       </div>

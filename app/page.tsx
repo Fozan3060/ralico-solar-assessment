@@ -21,6 +21,9 @@ export default function Home() {
   const [muted, setMuted] = useState(false);
   const [collected, setCollected] = useState<CollectedData>(EMPTY_COLLECTED);
   const [isComplete, setIsComplete] = useState(false);
+  // True once the user has explicitly said they don't know their annual bill,
+  // even after the assistant offered a typical UK estimate.
+  const [billUnknown, setBillUnknown] = useState(false);
 
   // Refs mirror state so async speech callbacks always read fresh values.
   const collectedRef = useRef(collected);
@@ -80,9 +83,11 @@ export default function Home() {
       ) {
         const payload = part as {
           collected: CollectedData;
+          bill_unknown?: boolean;
           complete: boolean;
         };
         setCollected(payload.collected);
+        setBillUnknown(Boolean(payload.bill_unknown));
         setIsComplete(Boolean(payload.complete));
         return;
       }
@@ -168,7 +173,11 @@ export default function Home() {
 
   return (
     <div className="flex h-dvh flex-col md:flex-row">
-      <DataPanel collected={collected} isComplete={isComplete} />
+      <DataPanel
+        collected={collected}
+        isComplete={isComplete}
+        billUnknown={billUnknown}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col bg-white md:order-1">
         <ChatHeader
