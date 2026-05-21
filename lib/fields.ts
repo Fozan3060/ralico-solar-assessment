@@ -48,3 +48,6 @@ export const FIELDS: FieldMeta[] = [
     format: capitalise,
   },
 ];
+
+/** The field keys, in the same order as `FIELDS`. Single source of truth. */
+export const FIELD_KEYS: readonly FieldKey[] = FIELDS.map((f) => f.key);

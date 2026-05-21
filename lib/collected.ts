@@ -1,13 +1,5 @@
+import { FIELD_KEYS } from "@/lib/fields";
 import type { CollectedData } from "@/lib/types";
-
-/** The five field keys, in the order they are displayed in the UI. */
-export const FIELD_KEYS = [
-  "property_type",
-  "annual_electricity_bill_gbp",
-  "number_of_occupants",
-  "heating_system",
-  "solar_interest",
-] as const;
 
 /** A fresh assessment — nothing collected yet. */
 export const EMPTY_COLLECTED: CollectedData = {
