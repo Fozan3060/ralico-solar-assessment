@@ -199,9 +199,11 @@ export function useSpeechRecognition({
       ).trim();
       accumulatedAltsRef.current = alternatives;
       clearEndOfUtteranceTimer();
-      // Fire on the next tick — effectively instant. Trades the ability
-      // to absorb mid-sentence pauses for snappy turn-end responsiveness.
-      endOfUtteranceTimerRef.current = setTimeout(fireAccumulated, 0);
+      // 1500ms is the stable, tested value: long enough to absorb the
+      // natural mid-clause pauses in conversational speech, short enough
+      // that the conversation doesn't feel draggy. Shorter values split
+      // utterances; longer values feel sluggish.
+      endOfUtteranceTimerRef.current = setTimeout(fireAccumulated, 1500);
     };
     recognition.onerror = (event) => {
       errorEmittedRef.current = true;
