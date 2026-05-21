@@ -199,7 +199,9 @@ export function useSpeechRecognition({
       ).trim();
       accumulatedAltsRef.current = alternatives;
       clearEndOfUtteranceTimer();
-      endOfUtteranceTimerRef.current = setTimeout(fireAccumulated, 1500);
+      // Fire on the next tick — effectively instant. Trades the ability
+      // to absorb mid-sentence pauses for snappy turn-end responsiveness.
+      endOfUtteranceTimerRef.current = setTimeout(fireAccumulated, 0);
     };
     recognition.onerror = (event) => {
       errorEmittedRef.current = true;
