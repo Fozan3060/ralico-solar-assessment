@@ -1,5 +1,6 @@
 import type { OrbState } from "@/components/chat/voice-orb";
-import { countFilledFields, FIELD_KEYS } from "@/lib/collected";
+import { countFilledFields } from "@/lib/collected";
+import { FIELD_KEYS } from "@/lib/fields";
 import { FIELDS } from "@/lib/fields";
 import type { CollectedData } from "@/lib/types";
 
