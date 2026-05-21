@@ -1,6 +1,6 @@
 # Build Workflow — Ralico Solar Assessment
 
-> **Planning discussion (Claude.ai web chat):** _[paste your Claude.ai share link here]_
+> **Planning discussion (Claude.ai web chat):** https://claude.ai/share/dc38a254-c3e8-4fac-959d-ec5b97fd4334
 >
 > This is a running log of how the app was built with **Claude Code**, feature by
 > feature. It's included for the recruiters — as the brief notes, the process tells

@@ -15,7 +15,18 @@ The original brief assumed a **text-only** chat — the user types, the AI repli
 
 ## What I would improve
 
-- **Edge-case handling** — graceful "I don't know" answers (e.g. user doesn't know their exact bill) and ambiguous inputs.
+- **Always-on voice via VAD + Groq Whisper** — replace browser `SpeechRecognition` with `getUserMedia` + Silero VAD + Groq Whisper-large-v3 (same Groq account, ~95% accuracy, ~500ms latency). Removes the silence-timeout cycle and most mishears; unlocks barge-in.
 - **CRM / email trigger** on completion (Slack or HubSpot webhook).
 - **`src/` directory** to separate application code from root config at scale.
-- **Full-duplex voice** — barge-in mid-sentence (needs a WebRTC stack, not browser speech).
+
+---
+
+## Local development
+
+```bash
+npm install
+cp .env.example .env.local   # add GROQ_API_KEY
+npm run dev                  # http://localhost:3000
+```
+
+For the **full engineering journey** (architectural decisions, voice/mic deep-dive, every wrong turn), see [`WORKFLOW.md`](./WORKFLOW.md).
