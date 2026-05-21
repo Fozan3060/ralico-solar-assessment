@@ -22,6 +22,10 @@ type UseSpeechRecognitionOptions = {
 const WATCHDOG_MS = 12_000;
 const END_OF_TURN_GRACE_MS = 500;
 const STOP_FALLBACK_MS = 1000;
+// Backup trigger for end-of-turn — fires when no new interim arrives for
+// this long, in case Chrome's `onspeechend` event never fires (which it
+// doesn't always do reliably, esp. on short single-word utterances).
+const INTERIM_STALENESS_MS = 1500;
 
 /**
  * Thin wrapper around the browser's `SpeechRecognition` API.
@@ -164,6 +168,13 @@ export function useSpeechRecognition({
         const interim = result[0]?.transcript?.trim() ?? "";
         latestInterimRef.current = interim;
         if (interim) onInterimRef.current?.(interim);
+        // Backup trigger: if no more interim arrives before this fires,
+        // commit anyway. Catches the case where `onspeechend` never fires.
+        clearEndOfTurnTimer();
+        endOfTurnTimerRef.current = setTimeout(
+          commitAndEnd,
+          INTERIM_STALENESS_MS,
+        );
         return;
       }
 
