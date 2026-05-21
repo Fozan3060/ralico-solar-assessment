@@ -15,7 +15,7 @@ The original brief assumed a **text-only** chat — the user types, the AI repli
 
 ## What I would improve
 
-- **Always-on voice via VAD + Groq Whisper** — replace browser `SpeechRecognition` with `getUserMedia` + Silero VAD + Groq Whisper-large-v3 (same Groq account, ~95% accuracy, ~500ms latency). Removes the silence-timeout cycle and most mishears; unlocks barge-in.
+- **Modern voice stack** — swap browser `SpeechRecognition` for **OpenAI Realtime API** (single WebSocket, drops ~500 lines of Chrome-quirk workarounds, ~95% STT accuracy, built-in VAD and barge-in) or **LiveKit Agents + Groq Whisper** if avoiding OpenAI lock-in matters. Both are paid (~$0.05–0.30/min); browser-native was the right call for a free no-key demo, but a real voice product would use one of these.
 - **CRM / email trigger** on completion (Slack or HubSpot webhook).
 - **`src/` directory** to separate application code from root config at scale.
 
