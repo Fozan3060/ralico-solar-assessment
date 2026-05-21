@@ -32,9 +32,10 @@ export default function Home() {
   // model errors) so the user sees what broke rather than wondering why
   // their answer didn't show up in the panel.
   const [extractionError, setExtractionError] = useState<string | null>(null);
-  // Live partial transcript from Chrome while the user is mid-utterance.
-  // Renders in the "YOU SAID" area so users get instant visual confirmation
-  // that the mic is capturing — even before the final result lands.
+  // Live partial transcript from Chrome WHILE the user is mid-utterance.
+  // Cleared the instant Chrome's final result fires — gives real-time
+  // capture confirmation during speech, then disappears so the UI stays
+  // clean once the AI starts responding.
   const [interimTranscript, setInterimTranscript] = useState("");
 
   const collectedRef = useRef(collected);
@@ -102,8 +103,8 @@ export default function Home() {
     isSupported: micSupported,
   } = useSpeechRecognition({
     onResult: (primary, alternatives) => {
-      // Clear the live partial — the committed message will render via the
-      // chat history's `userEcho` slot from here on.
+      // Final result landed — clear the live partial so it disappears
+      // as the AI takes over the turn.
       setInterimTranscript("");
       sendMessage(primary, alternatives);
     },
@@ -156,6 +157,18 @@ export default function Home() {
       setExtractionError(null);
     }
   }, [data]);
+
+  // Hard-stop the mic the instant the assessment completes. Without this,
+  // if extraction's `complete: true` arrives AFTER the closing TTS finishes
+  // (extraction runs server-side after chat ends, so its data part can land
+  // a beat late), the mic would already have auto-opened — and the user's
+  // "thank you" would reopen a conversation that's supposed to be done.
+  useEffect(() => {
+    if (isComplete) {
+      stopListening();
+      setInterimTranscript("");
+    }
+  }, [isComplete, stopListening]);
 
   const wasLoading = useRef(false);
   useEffect(() => {
@@ -240,16 +253,6 @@ export default function Home() {
     .reverse()
     .find((m) => m.role === "assistant");
   const captionText = lastAssistant?.content ?? "";
-  // Echo the user's last transcribed reply so it's visible whether the AI
-  // mis-handled a valid answer or Chrome's STT mis-heard the user. The
-  // `[STT alts: …]` annotation is an internal hint for the LLM — strip it
-  // from what the user sees.
-  const lastUser = [...visibleMessages]
-    .reverse()
-    .find((m) => m.role === "user");
-  const userEcho = (lastUser?.content ?? "")
-    .replace(/\s*\[STT alts:.+?\]\s*$/, "")
-    .trim();
   // Show the typing indicator throughout the whole streaming response — the
   // caption renders only when streaming is done. That way the text doesn't
   // jitter as tokens arrive one by one.
@@ -348,24 +351,14 @@ export default function Home() {
                 )}
               </div>
 
-              {/* User-speech echo. While Chrome is mid-utterance we show
-                  the live partial transcript (cyan) so the user can see
-                  capture happening in real time — once the final result
-                  lands it falls back to the committed transcript (dim). */}
-              {(interimTranscript || userEcho) && (
-                <p className="w-full max-w-xl text-center text-sm">
-                  <span className="mr-2 font-mono text-[10px] uppercase tracking-[0.25em] text-white/30">
-                    you said
-                  </span>
-                  <span
-                    className={
-                      interimTranscript
-                        ? "italic text-cyan-300/90"
-                        : "italic text-white/55"
-                    }
-                  >
-                    &ldquo;{interimTranscript || userEcho}&rdquo;
-                  </span>
+              {/* Live partial transcript — only renders while Chrome is
+                  decoding the user's speech in real time. Clears the moment
+                  the final result lands, so the UI stays clean once the AI
+                  starts responding. Gives mid-speech capture confirmation
+                  without permanent visual clutter. */}
+              {interimTranscript && (
+                <p className="w-full max-w-xl text-center text-sm italic text-cyan-300/90">
+                  &ldquo;{interimTranscript}&rdquo;
                 </p>
               )}
             </div>
